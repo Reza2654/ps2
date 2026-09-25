@@ -33,6 +33,12 @@ public static class PolicyEngine
     {
         violations = new List<string>();
 
+        // 0. Global allow-all override check
+        if (manifest.AllowAll && policy.DisallowAllowAll)
+        {
+            violations.Add($"Policy '{policy.Name}' strictly forbids the use of '--allow-all' override.");
+        }
+
         // 1. Process execution check
         if (policy.DisallowProcessExecution && manifest.ProcExec.Count > 0)
         {
@@ -204,6 +210,55 @@ public static class PolicyEngine
         return true;
     }
 
+    public static List<CapabilityComplianceItem> EvaluateDetailedCompliance(CapabilityManifest manifest, SecurityPolicy policy)
+    {
+        var items = new List<CapabilityComplianceItem>();
+
+        if (manifest.AllowAll)
+        {
+            if (policy.DisallowAllowAll)
+            {
+                items.Add(new CapabilityComplianceItem("override", "--allow-all", false, "DisallowAllowAll", $"Policy '{policy.Name}' strictly forbids --allow-all override."));
+            }
+            else
+            {
+                items.Add(new CapabilityComplianceItem("override", "--allow-all", true, null, "Global sandbox override permitted by policy."));
+            }
+        }
+
+        foreach (var r in manifest.FsRead)
+        {
+            bool ok = IsPathAllowedByPolicy(r, isWrite: false, policy, out var reason);
+            items.Add(new CapabilityComplianceItem("fs.read", r, ok, ok ? null : "BlockedPaths", reason));
+        }
+
+        foreach (var w in manifest.FsWrite)
+        {
+            bool ok = IsPathAllowedByPolicy(w, isWrite: true, policy, out var reason);
+            items.Add(new CapabilityComplianceItem("fs.write", w, ok, ok ? null : (reason.Contains("read-only") ? "ReadOnlyPaths" : "BlockedPaths"), reason));
+        }
+
+        foreach (var net in manifest.NetHttp)
+        {
+            bool ok = IsDomainAllowedByPolicy(net, policy, out var reason);
+            items.Add(new CapabilityComplianceItem("net.http", net, ok, ok ? null : (policy.DisallowExternalNetwork ? "DisallowExternalNetwork" : "BlockedDomains"), reason));
+        }
+
+        foreach (var env in manifest.Env)
+        {
+            bool ok = IsEnvAllowedByPolicy(env, policy, out var reason);
+            items.Add(new CapabilityComplianceItem("env", env, ok, ok ? null : (policy.DisallowAllEnv ? "DisallowAllEnv" : "BlockedEnvVars"), reason));
+        }
+
+        foreach (var proc in manifest.ProcExec)
+        {
+            bool ok = IsBinaryAllowedByPolicy(proc, policy, out var reason);
+            items.Add(new CapabilityComplianceItem("proc.exec", proc, ok, ok ? null : (policy.DisallowProcessExecution ? "DisallowProcessExecution" : "BlockedBinaries"), reason));
+        }
+
+        return items;
+    }
+
     private static bool IsDomainWhitelisted(string targetDomain, HashSet<string> allowedDomains)
     {
         foreach (var allowed in allowedDomains)
@@ -217,12 +272,21 @@ public static class PolicyEngine
     private static bool IsSubpathOrMatch(string path, IEnumerable<string> restrictedPatterns)
     {
         var norm = path.Replace('\\', '/').TrimEnd('/');
+        var comp = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         foreach (var raw in restrictedPatterns)
         {
             var pattern = raw.Replace('\\', '/').TrimEnd('/');
-            if (string.Equals(norm, pattern, StringComparison.OrdinalIgnoreCase)) return true;
-            if (norm.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(norm, pattern, comp)) return true;
+            if (norm.StartsWith(pattern + "/", comp)) return true;
         }
         return false;
     }
 }
+
+public sealed record CapabilityComplianceItem(
+    string Capability,
+    string Resource,
+    bool IsAllowed,
+    string? RuleTriggered,
+    string Reason
+);

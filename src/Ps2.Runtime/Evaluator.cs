@@ -403,6 +403,10 @@ public sealed class Evaluator
                 return Ps2Value.From(!l.Equals(r));
 
             case BinaryOp.Add:
+                if (l.Type == Ps2ValueType.Secret || r.Type == Ps2ValueType.Secret)
+                {
+                    return Ps2Value.From(l.AsString() + r.AsString());
+                }
                 if (l.Type == Ps2ValueType.String || r.Type == Ps2ValueType.String)
                 {
                     return Ps2Value.From(l.AsString() + r.AsString());

@@ -29,31 +29,54 @@ public sealed class SecurityPolicy
     public HashSet<string> BlockedEnvVars { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string>? AllowedEnvVars { get; set; } = null; // null means no restriction beyond manifest
 
+    // Execution override policies
+    public bool DisallowAllowAll { get; set; } = false;
+
     public static SecurityPolicy Default => new()
     {
         Name = "default",
-        Description = "Standard Zero-Trust policy relying on script manifest capabilities."
+        Description = "Standard Zero-Trust policy relying on script manifest capabilities.",
+        BlockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "169.254.169.254",
+            "169.254.169.253",
+            "[fd00:ec2::254]",
+            "fd00:ec2::254",
+            "metadata.google.internal",
+            "metadata"
+        }
     };
 
     public static SecurityPolicy Strict => new()
     {
         Name = "strict",
-        Description = "Strict enterprise policy requiring signed scripts and explicitly restricted paths.",
+        Description = "Strict enterprise policy requiring signed scripts, disabling --allow-all, and explicitly restricting paths.",
+        DisallowAllowAll = true,
         BlockedPaths = new List<string>
         {
             "/etc/shadow",
             "/etc/sudoers",
             "C:/Windows/System32/config",
             "C:/Windows/System32/SAM"
+        },
+        BlockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "169.254.169.254",
+            "169.254.169.253",
+            "[fd00:ec2::254]",
+            "fd00:ec2::254",
+            "metadata.google.internal",
+            "metadata"
         }
     };
 
     public static SecurityPolicy Production => new()
     {
         Name = "production",
-        Description = "Hardened production policy: process execution forbidden, external network restricted to internal domains, critical system paths blocked.",
+        Description = "Hardened production policy: process execution forbidden, external network restricted to internal domains, critical system paths blocked, --allow-all strictly rejected.",
         DisallowProcessExecution = true,
         DisallowExternalNetwork = true,
+        DisallowAllowAll = true,
         BlockedPaths = new List<string>
         {
             "/etc",
@@ -67,6 +90,15 @@ public sealed class SecurityPolicy
         {
             "/etc/ssl",
             "C:/Windows/System32/drivers/etc/hosts"
+        },
+        BlockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "169.254.169.254",
+            "169.254.169.253",
+            "[fd00:ec2::254]",
+            "fd00:ec2::254",
+            "metadata.google.internal",
+            "metadata"
         },
         BlockedEnvVars = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

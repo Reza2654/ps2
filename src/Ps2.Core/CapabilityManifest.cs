@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Ps2.Core;
 
@@ -40,7 +41,6 @@ public sealed class CapabilityManifest
     private static string NormalizePathPattern(string path)
     {
         var cleaned = path.Trim().Replace('\\', '/');
-        // Preserve trailing slash if explicitly specified as directory marker
         bool isExplicitDir = cleaned.EndsWith('/') && cleaned.Length > 1;
         if (isExplicitDir)
         {
@@ -49,17 +49,47 @@ public sealed class CapabilityManifest
         return cleaned;
     }
 
+    private bool TryHandleAllowAll(string operation, string resource)
+    {
+        if (!AllowAll) return false;
+
+        if (ActivePolicy.DisallowAllowAll)
+        {
+            var reason = $"Policy '{ActivePolicy.Name}' strictly forbids the use of '--allow-all' override.";
+            AuditLogger.Log(AuditEvent.Create(
+                ScriptIdentity,
+                operation,
+                resource,
+                AuditDecision.DENY,
+                reason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "allow-all", resource, reason);
+        }
+
+        AuditLogger.Log(AuditEvent.Create(
+            ScriptIdentity,
+            operation,
+            resource,
+            AuditDecision.ALLOW,
+            "Allowed via --allow-all override"
+        ));
+        return true;
+    }
+
     public string EnsureFsReadAllowed(string targetPath, string? baseDirectory = null)
     {
         string canonicalPath;
         try
         {
-            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory);
+            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory, "fs.read");
+        }
+        catch (Ps2SecurityException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.read",
                 targetPath,
@@ -72,8 +102,7 @@ public sealed class CapabilityManifest
         // Policy check first
         if (!PolicyEngine.IsPathAllowedByPolicy(canonicalPath, isWrite: false, ActivePolicy, out var policyReason))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.read",
                 canonicalPath,
@@ -83,23 +112,14 @@ public sealed class CapabilityManifest
             throw new Ps2PolicyViolationException(ActivePolicy.Name, "fs.read", canonicalPath, policyReason);
         }
 
-        if (AllowAll)
+        if (TryHandleAllowAll("fs.read", canonicalPath))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
-                ScriptIdentity,
-                "fs.read",
-                canonicalPath,
-                AuditDecision.ALLOW,
-                "Allowed via --allow-all override"
-            ));
             return canonicalPath;
         }
 
         if (IsPathMatching(targetPath, FsRead, baseDirectory, out _))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.read",
                 canonicalPath,
@@ -109,8 +129,7 @@ public sealed class CapabilityManifest
             return canonicalPath;
         }
 
-        AuditLogger.Log(new AuditEvent(
-            DateTimeOffset.UtcNow.ToString("o"),
+        AuditLogger.Log(AuditEvent.Create(
             ScriptIdentity,
             "fs.read",
             canonicalPath,
@@ -130,12 +149,15 @@ public sealed class CapabilityManifest
         string canonicalPath;
         try
         {
-            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory);
+            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory, "fs.write");
+        }
+        catch (Ps2SecurityException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.write",
                 targetPath,
@@ -148,8 +170,7 @@ public sealed class CapabilityManifest
         // Policy check first
         if (!PolicyEngine.IsPathAllowedByPolicy(canonicalPath, isWrite: true, ActivePolicy, out var policyReason))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.write",
                 canonicalPath,
@@ -159,23 +180,14 @@ public sealed class CapabilityManifest
             throw new Ps2PolicyViolationException(ActivePolicy.Name, "fs.write", canonicalPath, policyReason);
         }
 
-        if (AllowAll)
+        if (TryHandleAllowAll("fs.write", canonicalPath))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
-                ScriptIdentity,
-                "fs.write",
-                canonicalPath,
-                AuditDecision.ALLOW,
-                "Allowed via --allow-all override"
-            ));
             return canonicalPath;
         }
 
         if (IsPathMatching(targetPath, FsWrite, baseDirectory, out _))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "fs.write",
                 canonicalPath,
@@ -185,8 +197,7 @@ public sealed class CapabilityManifest
             return canonicalPath;
         }
 
-        AuditLogger.Log(new AuditEvent(
-            DateTimeOffset.UtcNow.ToString("o"),
+        AuditLogger.Log(AuditEvent.Create(
             ScriptIdentity,
             "fs.write",
             canonicalPath,
@@ -214,8 +225,7 @@ public sealed class CapabilityManifest
         }
         else
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "net.http",
                 urlOrHost,
@@ -232,8 +242,7 @@ public sealed class CapabilityManifest
         // Protocol Whitelist
         if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "net.http",
                 urlOrHost,
@@ -249,11 +258,24 @@ public sealed class CapabilityManifest
 
         string host = uri.Host;
 
+        // Cloud Metadata Protection
+        if (IsCloudMetadataEndpoint(host))
+        {
+            var reason = $"Access blocked: Target host '{host}' is a protected cloud instance metadata endpoint.";
+            AuditLogger.Log(AuditEvent.Create(
+                ScriptIdentity,
+                "net.http",
+                host,
+                AuditDecision.DENY,
+                reason
+            ));
+            throw new Ps2SecurityException("net.http", host, $"[Zero-Trust Sandbox] Access to cloud instance metadata endpoint '{host}' is strictly prohibited.");
+        }
+
         // Policy check first
         if (!PolicyEngine.IsDomainAllowedByPolicy(host, ActivePolicy, out var policyReason))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "net.http",
                 host,
@@ -263,16 +285,8 @@ public sealed class CapabilityManifest
             throw new Ps2PolicyViolationException(ActivePolicy.Name, "net.http", host, policyReason);
         }
 
-        if (AllowAll)
+        if (TryHandleAllowAll("net.http", host))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
-                ScriptIdentity,
-                "net.http",
-                host,
-                AuditDecision.ALLOW,
-                "Allowed via --allow-all override"
-            ));
             return;
         }
 
@@ -280,8 +294,7 @@ public sealed class CapabilityManifest
         {
             if (rule == "*" || string.Equals(rule, host, StringComparison.OrdinalIgnoreCase))
             {
-                AuditLogger.Log(new AuditEvent(
-                    DateTimeOffset.UtcNow.ToString("o"),
+                AuditLogger.Log(AuditEvent.Create(
                     ScriptIdentity,
                     "net.http",
                     host,
@@ -293,8 +306,7 @@ public sealed class CapabilityManifest
 
             if (rule.StartsWith("*.") && host.EndsWith(rule.Substring(1), StringComparison.OrdinalIgnoreCase))
             {
-                AuditLogger.Log(new AuditEvent(
-                    DateTimeOffset.UtcNow.ToString("o"),
+                AuditLogger.Log(AuditEvent.Create(
                     ScriptIdentity,
                     "net.http",
                     host,
@@ -305,8 +317,7 @@ public sealed class CapabilityManifest
             }
         }
 
-        AuditLogger.Log(new AuditEvent(
-            DateTimeOffset.UtcNow.ToString("o"),
+        AuditLogger.Log(AuditEvent.Create(
             ScriptIdentity,
             "net.http",
             host,
@@ -321,13 +332,43 @@ public sealed class CapabilityManifest
         );
     }
 
+    public static bool IsCloudMetadataEndpoint(string host)
+    {
+        var h = host.Trim().Trim('[', ']');
+        if (string.Equals(h, "169.254.169.254", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(h, "169.254.169.253", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(h, "metadata.google.internal", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(h, "metadata", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(h, "fd00:ec2::254", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (System.Net.IPAddress.TryParse(h, out var ip))
+        {
+            if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                var bytes = ip.GetAddressBytes();
+                if (bytes[0] == 169 && bytes[1] == 254)
+                {
+                    return true;
+                }
+            }
+            else if (ip.IsIPv6LinkLocal)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public void EnsureEnvAllowed(string variableName)
     {
         // Policy check first
         if (!PolicyEngine.IsEnvAllowedByPolicy(variableName, ActivePolicy, out var policyReason))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "env",
                 variableName,
@@ -337,25 +378,18 @@ public sealed class CapabilityManifest
             throw new Ps2PolicyViolationException(ActivePolicy.Name, "env", variableName, policyReason);
         }
 
-        if (AllowAll)
+        if (TryHandleAllowAll("env", variableName))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
-                ScriptIdentity,
-                "env",
-                variableName,
-                AuditDecision.ALLOW,
-                "Allowed via --allow-all override"
-            ));
             return;
         }
 
+        var comp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
         foreach (var rule in Env)
         {
-            if (rule == "*" || string.Equals(rule, variableName, StringComparison.OrdinalIgnoreCase))
+            if (rule == "*" || string.Equals(rule, variableName, comp))
             {
-                AuditLogger.Log(new AuditEvent(
-                    DateTimeOffset.UtcNow.ToString("o"),
+                AuditLogger.Log(AuditEvent.Create(
                     ScriptIdentity,
                     "env",
                     variableName,
@@ -366,8 +400,7 @@ public sealed class CapabilityManifest
             }
         }
 
-        AuditLogger.Log(new AuditEvent(
-            DateTimeOffset.UtcNow.ToString("o"),
+        AuditLogger.Log(AuditEvent.Create(
             ScriptIdentity,
             "env",
             variableName,
@@ -389,8 +422,7 @@ public sealed class CapabilityManifest
         // Policy check first
         if (!PolicyEngine.IsBinaryAllowedByPolicy(binaryName, ActivePolicy, out var policyReason))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
+            AuditLogger.Log(AuditEvent.Create(
                 ScriptIdentity,
                 "proc.exec",
                 binaryName,
@@ -400,16 +432,8 @@ public sealed class CapabilityManifest
             throw new Ps2PolicyViolationException(ActivePolicy.Name, "proc.exec", binaryName, policyReason);
         }
 
-        if (AllowAll)
+        if (TryHandleAllowAll("proc.exec", binaryName))
         {
-            AuditLogger.Log(new AuditEvent(
-                DateTimeOffset.UtcNow.ToString("o"),
-                ScriptIdentity,
-                "proc.exec",
-                binaryName,
-                AuditDecision.ALLOW,
-                "Allowed via --allow-all override"
-            ));
             return;
         }
 
@@ -418,8 +442,7 @@ public sealed class CapabilityManifest
             if (rule == "*" || string.Equals(rule, binaryName, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(rule, nameOnly, StringComparison.OrdinalIgnoreCase))
             {
-                AuditLogger.Log(new AuditEvent(
-                    DateTimeOffset.UtcNow.ToString("o"),
+                AuditLogger.Log(AuditEvent.Create(
                     ScriptIdentity,
                     "proc.exec",
                     binaryName,
@@ -430,8 +453,7 @@ public sealed class CapabilityManifest
             }
         }
 
-        AuditLogger.Log(new AuditEvent(
-            DateTimeOffset.UtcNow.ToString("o"),
+        AuditLogger.Log(AuditEvent.Create(
             ScriptIdentity,
             "proc.exec",
             binaryName,
@@ -446,23 +468,121 @@ public sealed class CapabilityManifest
         );
     }
 
-    private static string ResolveCanonicalPath(string targetPath, string? baseDirectory)
+    private static readonly HashSet<string> DosDeviceNames = new(StringComparer.OrdinalIgnoreCase)
     {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
+
+    private static string ResolveCanonicalPath(string targetPath, string? baseDirectory, string capability = "fs")
+    {
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            throw new Ps2SecurityException(capability, targetPath, "[Zero-Trust Sandbox] Path cannot be empty or whitespace.");
+        }
+
         var cleaned = targetPath.Trim();
-        // Strip Windows Alternate Data Streams suffix if present
+
+        // 1. Detect UNC and remote network share paths (e.g. \\server\share or //server/share)
+        if (cleaned.StartsWith(@"\\") || cleaned.StartsWith("//") || cleaned.StartsWith(@"\/") || cleaned.StartsWith(@"/\"))
+        {
+            throw new Ps2SecurityException(capability, targetPath, "[Zero-Trust Sandbox] UNC and remote network paths ('\\\\...') are strictly prohibited.");
+        }
+
+        // 2. Detect DOS device names (e.g. CON, NUL, AUX, PRN, COM1..9, LPT1..9)
+        var segments = cleaned.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var seg in segments)
+        {
+            var nameWithoutExt = Path.GetFileNameWithoutExtension(seg);
+            if (DosDeviceNames.Contains(seg) || DosDeviceNames.Contains(nameWithoutExt))
+            {
+                throw new Ps2SecurityException(capability, targetPath, $"[Zero-Trust Sandbox] Access to DOS device name '{seg}' is prohibited.");
+            }
+        }
+
+        // Strip Windows Alternate Data Streams suffix if present (e.g. ::$DATA) before stream check
         int adsIdx = cleaned.IndexOf("::$DATA", StringComparison.OrdinalIgnoreCase);
         if (adsIdx >= 0)
         {
             cleaned = cleaned.Substring(0, adsIdx);
         }
 
-        if (Path.IsPathRooted(cleaned))
+        // 3. Detect invalid colons (Alternate Data Streams like file.txt:evil or dir:stream)
+        for (int i = 0; i < cleaned.Length; i++)
         {
-            return Path.GetFullPath(cleaned).Replace('\\', '/');
+            if (cleaned[i] == ':')
+            {
+                // Only allow colon as drive specifier at index 1 (e.g. C:)
+                if (i != 1 || !char.IsLetter(cleaned[0]))
+                {
+                    throw new Ps2SecurityException(capability, targetPath, $"[Zero-Trust Sandbox] Path contains invalid stream specifier or colon: '{targetPath}'.");
+                }
+            }
         }
 
-        var baseDir = baseDirectory != null ? Path.GetFullPath(baseDirectory) : Directory.GetCurrentDirectory();
-        return Path.GetFullPath(Path.Combine(baseDir, cleaned)).Replace('\\', '/');
+        string full;
+        if (Path.IsPathRooted(cleaned))
+        {
+            full = Path.GetFullPath(cleaned).Replace('\\', '/');
+        }
+        else
+        {
+            var baseDir = baseDirectory != null ? Path.GetFullPath(baseDirectory) : Directory.GetCurrentDirectory();
+            full = Path.GetFullPath(Path.Combine(baseDir, cleaned)).Replace('\\', '/');
+        }
+
+        // Double check UNC after GetFullPath
+        if (full.StartsWith("//") || full.StartsWith(@"\\"))
+        {
+            throw new Ps2SecurityException(capability, targetPath, "[Zero-Trust Sandbox] Resolved path is a UNC network path, which is prohibited.");
+        }
+
+        return full;
+    }
+
+    private static string ResolveSymlinkTargetIfPresent(string fullPath)
+    {
+        try
+        {
+            if (File.Exists(fullPath))
+            {
+                var fi = new FileInfo(fullPath);
+                var target = fi.ResolveLinkTarget(returnFinalTarget: true);
+                if (target != null)
+                {
+                    return target.FullName.Replace('\\', '/');
+                }
+            }
+            else if (Directory.Exists(fullPath))
+            {
+                var di = new DirectoryInfo(fullPath);
+                var target = di.ResolveLinkTarget(returnFinalTarget: true);
+                if (target != null)
+                {
+                    return target.FullName.Replace('\\', '/');
+                }
+            }
+            else
+            {
+                var parentDir = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
+                {
+                    var di = new DirectoryInfo(parentDir);
+                    var target = di.ResolveLinkTarget(returnFinalTarget: true);
+                    if (target != null)
+                    {
+                        var fileName = Path.GetFileName(fullPath);
+                        return Path.Combine(target.FullName, fileName).Replace('\\', '/');
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fallback to original path if symlink resolution throws
+        }
+        return fullPath;
     }
 
     private static bool IsPathMatching(string targetPath, IEnumerable<string> allowedPatterns, string? baseDirectory, out string fullTarget)
@@ -476,6 +596,21 @@ public sealed class CapabilityManifest
             fullTarget = targetPath;
             return false;
         }
+
+        string symlinkResolvedTarget = ResolveSymlinkTargetIfPresent(fullTarget);
+
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        // Both the direct canonical path AND the underlying link target must match allowed patterns
+        return CheckPathMatchesPatterns(fullTarget, allowedPatterns, baseDirectory, comparison) &&
+               CheckPathMatchesPatterns(symlinkResolvedTarget, allowedPatterns, baseDirectory, comparison);
+    }
+
+    private static bool CheckPathMatchesPatterns(string pathToCheck, IEnumerable<string> allowedPatterns, string? baseDirectory, StringComparison comparison)
+    {
+        var normTarget = pathToCheck.TrimEnd('/');
 
         foreach (var rawPattern in allowedPatterns)
         {
@@ -491,21 +626,19 @@ public sealed class CapabilityManifest
                 continue;
             }
 
-            var normTarget = fullTarget.TrimEnd('/');
             var normPattern = fullPattern.TrimEnd('/');
 
             // Exact match (files or exact directory match)
-            if (string.Equals(normTarget, normPattern, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normTarget, normPattern, comparison))
                 return true;
 
             // Directory subtree match:
-            // Only allow prefix containment if pattern was specified as directory or is an existing directory
             bool isExplicitDir = rawPattern.EndsWith('/') || rawPattern.EndsWith('\\');
             bool isExistingDir = Directory.Exists(fullPattern);
 
             if (isExplicitDir || isExistingDir)
             {
-                if (normTarget.StartsWith(normPattern + "/", StringComparison.OrdinalIgnoreCase))
+                if (normTarget.StartsWith(normPattern + "/", comparison))
                     return true;
             }
         }

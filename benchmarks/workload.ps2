@@ -1,0 +1,11 @@
+#manifest
+requires {
+    fs.read: ["./data.json"]
+}
+#endmanifest
+
+let raw = fs.read_file("./data.json");
+let data = json.parse(raw);
+let active = data |> filter(item => item["status"] == "active");
+let total_cpu = active |> reduce((acc, item) => acc + item["cpu"], 0);
+println("PS2: Processed " + len(active) + " active nodes, Total CPU: " + total_cpu);

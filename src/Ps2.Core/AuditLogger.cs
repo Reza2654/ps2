@@ -15,6 +15,8 @@ public enum AuditDecision
 }
 
 public sealed record AuditEvent(
+    [property: JsonPropertyName("event_id")] string EventId,
+    [property: JsonPropertyName("schema_version")] string SchemaVersion,
     [property: JsonPropertyName("timestamp")] string Timestamp,
     [property: JsonPropertyName("script_identity")] string ScriptIdentity,
     [property: JsonPropertyName("operation")] string Operation,
@@ -23,6 +25,36 @@ public sealed record AuditEvent(
     [property: JsonPropertyName("reason")] string Reason
 )
 {
+    public AuditEvent(
+        string timestamp,
+        string scriptIdentity,
+        string operation,
+        string resource,
+        AuditDecision decision,
+        string reason)
+        : this(Guid.NewGuid().ToString(), "1.0", timestamp, scriptIdentity, operation, EvaluatorSecretScrubber.Scrub(resource), decision, EvaluatorSecretScrubber.Scrub(reason))
+    {
+    }
+
+    public static AuditEvent Create(
+        string scriptIdentity,
+        string operation,
+        string resource,
+        AuditDecision decision,
+        string reason)
+    {
+        return new AuditEvent(
+            Guid.NewGuid().ToString(),
+            "1.0",
+            DateTimeOffset.UtcNow.ToString("o"),
+            scriptIdentity,
+            operation,
+            EvaluatorSecretScrubber.Scrub(resource),
+            decision,
+            EvaluatorSecretScrubber.Scrub(reason)
+        );
+    }
+
     public string ToJson() => JsonSerializer.Serialize(this, AuditJsonContext.Default.AuditEvent);
 }
 

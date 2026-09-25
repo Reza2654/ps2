@@ -13,7 +13,7 @@ namespace Ps2.Cli;
 
 public static class Program
 {
-    private const string Version = "0.3.0-beta (Secure Automation Runtime)";
+    private const string Version = "0.4.0 (Security Hardened & Formally Verified)";
 
     public static int Main(string[] args)
     {
@@ -111,6 +111,7 @@ public static class Program
         bool allowAll = false;
         bool strict = false;
         bool noVerify = false;
+        bool dryRun = false;
         SecurityPolicy securityPolicy = SecurityPolicy.Default;
         IAuditLogger auditLogger = NullAuditLogger.Instance;
         var scriptArgs = new List<string>();
@@ -122,6 +123,10 @@ public static class Program
             if (arg == "--allow-all")
             {
                 allowAll = true;
+            }
+            else if (arg == "--dry-run")
+            {
+                dryRun = true;
             }
             else if (arg == "--strict")
             {
@@ -163,6 +168,14 @@ public static class Program
         {
             Console.WriteLine("Error: No script specified.");
             return 1;
+        }
+
+        if (allowAll && securityPolicy.DisallowAllowAll)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"\n[SECURITY POLICY VIOLATION] Policy '{securityPolicy.Name}' strictly forbids the use of '--allow-all' override.");
+            Console.ResetColor();
+            return 126;
         }
 
         string scriptContent;
@@ -211,6 +224,11 @@ public static class Program
         // Parse
         var parser = new Ps2Parser(tokens);
         var program = parser.Parse();
+
+        if (dryRun)
+        {
+            return PrintDryRunReport(program.Manifest, securityPolicy);
+        }
 
         // Evaluate
         var scriptIdentity = Path.GetFileName(targetFile);
@@ -321,27 +339,61 @@ public static class Program
         // Policy check if requested
         if (policy != null)
         {
-            Console.WriteLine($"\n[POLICY COMPLIANCE - {policy.Name.ToUpperInvariant()}]");
-            if (PolicyEngine.ValidateManifestAgainstPolicy(program.Manifest, policy, out var violations))
+            return PrintDryRunReport(program.Manifest, policy);
+        }
+
+        return 0;
+    }
+
+    private static int PrintDryRunReport(CapabilityManifest manifest, SecurityPolicy policy)
+    {
+        var items = PolicyEngine.EvaluateDetailedCompliance(manifest, policy);
+        Console.WriteLine($"\n[DRY-RUN / POLICY COMPLIANCE REPORT - {policy.Name.ToUpperInvariant()}]");
+        Console.WriteLine(new string('-', 96));
+        Console.WriteLine($"{"CAPABILITY",-12} | {"RESOURCE",-30} | {"STATUS",-8} | {"POLICY RULE / REASON"}");
+        Console.WriteLine(new string('-', 96));
+
+        int violations = 0;
+        foreach (var item in items)
+        {
+            var status = item.IsAllowed ? "ALLOW" : "DENY";
+            if (!item.IsAllowed) violations++;
+
+            if (item.IsAllowed)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("  Result: COMPLIANT (Meets all organizational policy requirements)");
-                Console.ResetColor();
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"  Result: NON-COMPLIANT ({violations.Count} policy violation(s)):");
-                foreach (var v in violations)
-                {
-                    Console.WriteLine($"    - {v}");
-                }
-                Console.ResetColor();
-                return 126;
             }
+
+            var rule = item.RuleTriggered != null ? $"[{item.RuleTriggered}] {item.Reason}" : item.Reason;
+            Console.WriteLine($"{item.Capability,-12} | {Truncate(item.Resource, 30),-30} | {status,-8} | {rule}");
+            Console.ResetColor();
         }
 
-        return 0;
+        Console.WriteLine(new string('-', 96));
+        if (violations > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Verdict: BLOCKED ({violations} policy violation(s) detected. Execution will be rejected with Exit Code 126).");
+            Console.ResetColor();
+            return 126;
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Verdict: PASSED (All requested capabilities satisfy organizational policy).");
+            Console.ResetColor();
+            return 0;
+        }
+    }
+
+    private static string Truncate(string s, int max)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length <= max) return s;
+        return s.Substring(0, max - 3) + "...";
     }
 
     private static void PrintCapabilityList(string name, HashSet<string> items)

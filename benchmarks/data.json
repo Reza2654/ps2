@@ -1,0 +1,22 @@
+[
+  { "id": "node-01", "status": "active", "cpu": 45, "mem": 62 },
+  { "id": "node-02", "status": "idle", "cpu": 5, "mem": 20 },
+  { "id": "node-03", "status": "active", "cpu": 78, "mem": 85 },
+  { "id": "node-04", "status": "maintenance", "cpu": 12, "mem": 30 },
+  { "id": "node-05", "status": "active", "cpu": 33, "mem": 40 },
+  { "id": "node-06", "status": "active", "cpu": 91, "mem": 94 },
+  { "id": "node-07", "status": "idle", "cpu": 8, "mem": 22 },
+  { "id": "node-08", "status": "active", "cpu": 54, "mem": 70 },
+  { "id": "node-09", "status": "active", "cpu": 65, "mem": 75 },
+  { "id": "node-10", "status": "maintenance", "cpu": 0, "mem": 15 },
+  { "id": "node-11", "status": "active", "cpu": 25, "mem": 35 },
+  { "id": "node-12", "status": "active", "cpu": 42, "mem": 58 },
+  { "id": "node-13", "status": "idle", "cpu": 3, "mem": 18 },
+  { "id": "node-14", "status": "active", "cpu": 88, "mem": 89 },
+  { "id": "node-15", "status": "active", "cpu": 60, "mem": 65 },
+  { "id": "node-16", "status": "active", "cpu": 19, "mem": 28 },
+  { "id": "node-17", "status": "maintenance", "cpu": 4, "mem": 12 },
+  { "id": "node-18", "status": "active", "cpu": 72, "mem": 80 },
+  { "id": "node-19", "status": "active", "cpu": 51, "mem": 61 },
+  { "id": "node-20", "status": "idle", "cpu": 7, "mem": 24 }
+]

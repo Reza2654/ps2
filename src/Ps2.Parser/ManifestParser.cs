@@ -12,6 +12,8 @@ public sealed class ManifestParser
         string? signature = null;
         int i = 0;
 
+        bool manifestParsed = false;
+
         // Check for signature or manifest at the top
         while (i < tokens.Count && tokens[i].Type != TokenType.Eof)
         {
@@ -24,6 +26,15 @@ public sealed class ManifestParser
 
             if (tokens[i].Type == TokenType.ManifestStart)
             {
+                if (manifestParsed)
+                {
+                    throw new Ps2SecurityException(
+                        "manifest",
+                        "#manifest",
+                        "[Zero-Trust Sandbox] Duplicate #manifest declaration found. Only one manifest header is permitted per script."
+                    );
+                }
+                manifestParsed = true;
                 i++; // skip #manifest
 
                 if (i < tokens.Count && tokens[i].Type == TokenType.Requires)
@@ -80,12 +91,21 @@ public sealed class ManifestParser
                             {
                                 if (tokens[i].Type == TokenType.StringLiteral)
                                 {
-                                    AddCapabilityItem(manifest, capName, (string)tokens[i].LiteralValue!);
+                                    var strVal = (string)tokens[i].LiteralValue!;
+                                    if (string.IsNullOrWhiteSpace(strVal))
+                                    {
+                                        throw new Ps2SecurityException("manifest", capName, $"[Zero-Trust Sandbox] Empty string element in '{capName}' capability declaration.");
+                                    }
+                                    AddCapabilityItem(manifest, capName, strVal);
                                     i++;
                                 }
                                 else
                                 {
-                                    i++;
+                                    throw new Ps2SecurityException(
+                                        "manifest",
+                                        capName,
+                                        $"[Zero-Trust Sandbox] Expected string literal in capability '{capName}', found '{tokens[i].Text}'."
+                                    );
                                 }
 
                                 if (i < tokens.Count && tokens[i].Type == TokenType.Comma)
@@ -101,7 +121,12 @@ public sealed class ManifestParser
                         }
                         else if (i < tokens.Count && tokens[i].Type == TokenType.StringLiteral)
                         {
-                            AddCapabilityItem(manifest, capName, (string)tokens[i].LiteralValue!);
+                            var strVal = (string)tokens[i].LiteralValue!;
+                            if (string.IsNullOrWhiteSpace(strVal))
+                            {
+                                throw new Ps2SecurityException("manifest", capName, $"[Zero-Trust Sandbox] Empty string element in '{capName}' capability declaration.");
+                            }
+                            AddCapabilityItem(manifest, capName, strVal);
                             i++;
                         }
                         else
