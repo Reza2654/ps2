@@ -63,14 +63,14 @@ public static class StandardLibrary
         // 1. Output functions
         scope.Define("println", Ps2Value.CreateNativeFunction("println", args =>
         {
-            var output = string.Join(" ", args.Select(a => a.AsString()));
+            var output = string.Join(" ", args.Select(a => EvaluatorSecretScrubber.Scrub(a.AsString())));
             Console.WriteLine(output);
             return Ps2Value.Null;
         }), isMutable: false);
 
         scope.Define("print", Ps2Value.CreateNativeFunction("print", args =>
         {
-            var output = string.Join(" ", args.Select(a => a.AsString()));
+            var output = string.Join(" ", args.Select(a => EvaluatorSecretScrubber.Scrub(a.AsString())));
             Console.Write(output);
             return Ps2Value.Null;
         }), isMutable: false);
@@ -260,6 +260,17 @@ public static class StandardLibrary
                 var entries = Directory.GetFileSystemEntries(resolvedPath).Select(Path.GetFileName).Select(e => Ps2Value.From(e!)).ToList();
                 return Ps2Value.From(entries);
             }),
+            ["create_dir"] = Ps2Value.CreateNativeFunction("fs.create_dir", args =>
+            {
+                if (args.Count == 0) return Ps2Value.False;
+                var path = args[0].AsString();
+                var resolvedPath = manifest.EnsureFsWriteAllowed(path, scriptDirectory);
+                if (!Directory.Exists(resolvedPath))
+                {
+                    Directory.CreateDirectory(resolvedPath);
+                }
+                return Ps2Value.True;
+            }),
             ["delete_file"] = Ps2Value.CreateNativeFunction("fs.delete_file", args =>
             {
                 if (args.Count == 0) return Ps2Value.False;
@@ -381,6 +392,16 @@ public static class StandardLibrary
                 var val = Environment.GetEnvironmentVariable(varName);
                 return val != null ? Ps2Value.Some(Ps2Value.From(val)) : Ps2Value.None();
             }),
+            ["secret"] = Ps2Value.CreateNativeFunction("sys.secret", args =>
+            {
+                if (args.Count == 0) throw new ArgumentException("sys.secret expects environment variable name");
+                var varName = args[0].AsString();
+                manifest.EnsureEnvAllowed(varName);
+                var val = Environment.GetEnvironmentVariable(varName);
+                if (val == null) return Ps2Value.None();
+                EvaluatorSecretScrubber.RegisterSecret(val);
+                return Ps2Value.Some(Ps2Value.Secret(val));
+            }),
             ["args"] = Ps2Value.CreateNativeFunction("sys.args", _ =>
             {
                 return Ps2Value.From(scriptArgs.Select(Ps2Value.From).ToList());
@@ -431,6 +452,28 @@ public static class StandardLibrary
             })
         };
         scope.Define("sys", Ps2Value.From(sysMap), isMutable: false);
+
+        // Secret Module
+        var secretMap = new Dictionary<string, Ps2Value>
+        {
+            ["mask"] = Ps2Value.CreateNativeFunction("secret.mask", args =>
+            {
+                if (args.Count == 0) return Ps2Value.Secret(string.Empty);
+                var raw = args[0].AsString();
+                EvaluatorSecretScrubber.RegisterSecret(raw);
+                return Ps2Value.Secret(raw);
+            }),
+            ["reveal"] = Ps2Value.CreateNativeFunction("secret.reveal", args =>
+            {
+                if (args.Count == 0) return Ps2Value.From(string.Empty);
+                if (args[0].Type == Ps2ValueType.Secret)
+                {
+                    return Ps2Value.From(args[0].AsSecret().Unmask());
+                }
+                return args[0];
+            })
+        };
+        scope.Define("secret", Ps2Value.From(secretMap), isMutable: false);
 
         // 9. path Module
         var pathMap = new Dictionary<string, Ps2Value>

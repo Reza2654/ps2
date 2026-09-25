@@ -6,6 +6,11 @@ namespace Ps2.Core;
 
 public sealed class CapabilityManifest
 {
+    public string SchemaVersion { get; set; } = "1.0";
+    public string ScriptIdentity { get; set; } = "anonymous";
+    public SecurityPolicy ActivePolicy { get; set; } = SecurityPolicy.Default;
+    public IAuditLogger AuditLogger { get; set; } = NullAuditLogger.Instance;
+
     public HashSet<string> FsRead { get; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> FsWrite { get; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> NetHttp { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -19,6 +24,18 @@ public sealed class CapabilityManifest
     public void AddNetHttp(string host) => NetHttp.Add(host.Trim());
     public void AddEnv(string envVar) => Env.Add(envVar.Trim());
     public void AddProcExec(string binary) => ProcExec.Add(binary.Trim());
+
+    public void Validate()
+    {
+        if (!string.Equals(SchemaVersion, "1.0", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Ps2SecurityException(
+                "manifest",
+                SchemaVersion,
+                $"[Zero-Trust Sandbox] Unsupported manifest schema version '{SchemaVersion}'. Supported versions: '1.0'."
+            );
+        }
+    }
 
     private static string NormalizePathPattern(string path)
     {
@@ -34,10 +51,72 @@ public sealed class CapabilityManifest
 
     public string EnsureFsReadAllowed(string targetPath, string? baseDirectory = null)
     {
-        if (AllowAll) return ResolveCanonicalPath(targetPath, baseDirectory);
+        string canonicalPath;
+        try
+        {
+            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory);
+        }
+        catch (Exception ex)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.read",
+                targetPath,
+                AuditDecision.DENY,
+                $"Path resolution failed: {ex.Message}"
+            ));
+            throw new Ps2SecurityException("fs.read", targetPath, $"[Zero-Trust Sandbox] Invalid path '{targetPath}': {ex.Message}");
+        }
 
-        if (IsPathMatching(targetPath, FsRead, baseDirectory, out var canonicalPath))
+        // Policy check first
+        if (!PolicyEngine.IsPathAllowedByPolicy(canonicalPath, isWrite: false, ActivePolicy, out var policyReason))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.read",
+                canonicalPath,
+                AuditDecision.DENY,
+                policyReason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "fs.read", canonicalPath, policyReason);
+        }
+
+        if (AllowAll)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.read",
+                canonicalPath,
+                AuditDecision.ALLOW,
+                "Allowed via --allow-all override"
+            ));
             return canonicalPath;
+        }
+
+        if (IsPathMatching(targetPath, FsRead, baseDirectory, out _))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.read",
+                canonicalPath,
+                AuditDecision.ALLOW,
+                "Capability granted by manifest"
+            ));
+            return canonicalPath;
+        }
+
+        AuditLogger.Log(new AuditEvent(
+            DateTimeOffset.UtcNow.ToString("o"),
+            ScriptIdentity,
+            "fs.read",
+            canonicalPath,
+            AuditDecision.DENY,
+            "Missing capability declaration in manifest"
+        ));
 
         throw new Ps2SecurityException(
             "fs.read",
@@ -48,10 +127,72 @@ public sealed class CapabilityManifest
 
     public string EnsureFsWriteAllowed(string targetPath, string? baseDirectory = null)
     {
-        if (AllowAll) return ResolveCanonicalPath(targetPath, baseDirectory);
+        string canonicalPath;
+        try
+        {
+            canonicalPath = ResolveCanonicalPath(targetPath, baseDirectory);
+        }
+        catch (Exception ex)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.write",
+                targetPath,
+                AuditDecision.DENY,
+                $"Path resolution failed: {ex.Message}"
+            ));
+            throw new Ps2SecurityException("fs.write", targetPath, $"[Zero-Trust Sandbox] Invalid path '{targetPath}': {ex.Message}");
+        }
 
-        if (IsPathMatching(targetPath, FsWrite, baseDirectory, out var canonicalPath))
+        // Policy check first
+        if (!PolicyEngine.IsPathAllowedByPolicy(canonicalPath, isWrite: true, ActivePolicy, out var policyReason))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.write",
+                canonicalPath,
+                AuditDecision.DENY,
+                policyReason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "fs.write", canonicalPath, policyReason);
+        }
+
+        if (AllowAll)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.write",
+                canonicalPath,
+                AuditDecision.ALLOW,
+                "Allowed via --allow-all override"
+            ));
             return canonicalPath;
+        }
+
+        if (IsPathMatching(targetPath, FsWrite, baseDirectory, out _))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "fs.write",
+                canonicalPath,
+                AuditDecision.ALLOW,
+                "Capability granted by manifest"
+            ));
+            return canonicalPath;
+        }
+
+        AuditLogger.Log(new AuditEvent(
+            DateTimeOffset.UtcNow.ToString("o"),
+            ScriptIdentity,
+            "fs.write",
+            canonicalPath,
+            AuditDecision.DENY,
+            "Missing capability declaration in manifest"
+        ));
 
         throw new Ps2SecurityException(
             "fs.write",
@@ -62,8 +203,6 @@ public sealed class CapabilityManifest
 
     public void EnsureNetHttpAllowed(string urlOrHost)
     {
-        if (AllowAll) return;
-
         Uri uri;
         if (Uri.TryCreate(urlOrHost, UriKind.Absolute, out var parsedUri))
         {
@@ -75,6 +214,14 @@ public sealed class CapabilityManifest
         }
         else
         {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "net.http",
+                urlOrHost,
+                AuditDecision.DENY,
+                "Malformed URL or host"
+            ));
             throw new Ps2SecurityException(
                 "net.http",
                 urlOrHost,
@@ -85,6 +232,14 @@ public sealed class CapabilityManifest
         // Protocol Whitelist
         if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
         {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "net.http",
+                urlOrHost,
+                AuditDecision.DENY,
+                $"Prohibited network protocol: {uri.Scheme}"
+            ));
             throw new Ps2SecurityException(
                 "net.http",
                 urlOrHost,
@@ -94,14 +249,70 @@ public sealed class CapabilityManifest
 
         string host = uri.Host;
 
+        // Policy check first
+        if (!PolicyEngine.IsDomainAllowedByPolicy(host, ActivePolicy, out var policyReason))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "net.http",
+                host,
+                AuditDecision.DENY,
+                policyReason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "net.http", host, policyReason);
+        }
+
+        if (AllowAll)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "net.http",
+                host,
+                AuditDecision.ALLOW,
+                "Allowed via --allow-all override"
+            ));
+            return;
+        }
+
         foreach (var rule in NetHttp)
         {
             if (rule == "*" || string.Equals(rule, host, StringComparison.OrdinalIgnoreCase))
+            {
+                AuditLogger.Log(new AuditEvent(
+                    DateTimeOffset.UtcNow.ToString("o"),
+                    ScriptIdentity,
+                    "net.http",
+                    host,
+                    AuditDecision.ALLOW,
+                    "Capability granted by manifest"
+                ));
                 return;
+            }
 
             if (rule.StartsWith("*.") && host.EndsWith(rule.Substring(1), StringComparison.OrdinalIgnoreCase))
+            {
+                AuditLogger.Log(new AuditEvent(
+                    DateTimeOffset.UtcNow.ToString("o"),
+                    ScriptIdentity,
+                    "net.http",
+                    host,
+                    AuditDecision.ALLOW,
+                    "Capability granted by manifest wildcard"
+                ));
                 return;
+            }
         }
+
+        AuditLogger.Log(new AuditEvent(
+            DateTimeOffset.UtcNow.ToString("o"),
+            ScriptIdentity,
+            "net.http",
+            host,
+            AuditDecision.DENY,
+            "Missing capability declaration in manifest"
+        ));
 
         throw new Ps2SecurityException(
             "net.http",
@@ -112,13 +323,57 @@ public sealed class CapabilityManifest
 
     public void EnsureEnvAllowed(string variableName)
     {
-        if (AllowAll) return;
+        // Policy check first
+        if (!PolicyEngine.IsEnvAllowedByPolicy(variableName, ActivePolicy, out var policyReason))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "env",
+                variableName,
+                AuditDecision.DENY,
+                policyReason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "env", variableName, policyReason);
+        }
+
+        if (AllowAll)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "env",
+                variableName,
+                AuditDecision.ALLOW,
+                "Allowed via --allow-all override"
+            ));
+            return;
+        }
 
         foreach (var rule in Env)
         {
             if (rule == "*" || string.Equals(rule, variableName, StringComparison.OrdinalIgnoreCase))
+            {
+                AuditLogger.Log(new AuditEvent(
+                    DateTimeOffset.UtcNow.ToString("o"),
+                    ScriptIdentity,
+                    "env",
+                    variableName,
+                    AuditDecision.ALLOW,
+                    "Capability granted by manifest"
+                ));
                 return;
+            }
         }
+
+        AuditLogger.Log(new AuditEvent(
+            DateTimeOffset.UtcNow.ToString("o"),
+            ScriptIdentity,
+            "env",
+            variableName,
+            AuditDecision.DENY,
+            "Missing capability declaration in manifest"
+        ));
 
         throw new Ps2SecurityException(
             "env",
@@ -129,15 +384,60 @@ public sealed class CapabilityManifest
 
     public void EnsureProcExecAllowed(string binaryName)
     {
-        if (AllowAll) return;
-
         var nameOnly = Path.GetFileName(binaryName);
+
+        // Policy check first
+        if (!PolicyEngine.IsBinaryAllowedByPolicy(binaryName, ActivePolicy, out var policyReason))
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "proc.exec",
+                binaryName,
+                AuditDecision.DENY,
+                policyReason
+            ));
+            throw new Ps2PolicyViolationException(ActivePolicy.Name, "proc.exec", binaryName, policyReason);
+        }
+
+        if (AllowAll)
+        {
+            AuditLogger.Log(new AuditEvent(
+                DateTimeOffset.UtcNow.ToString("o"),
+                ScriptIdentity,
+                "proc.exec",
+                binaryName,
+                AuditDecision.ALLOW,
+                "Allowed via --allow-all override"
+            ));
+            return;
+        }
+
         foreach (var rule in ProcExec)
         {
             if (rule == "*" || string.Equals(rule, binaryName, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(rule, nameOnly, StringComparison.OrdinalIgnoreCase))
+            {
+                AuditLogger.Log(new AuditEvent(
+                    DateTimeOffset.UtcNow.ToString("o"),
+                    ScriptIdentity,
+                    "proc.exec",
+                    binaryName,
+                    AuditDecision.ALLOW,
+                    "Capability granted by manifest"
+                ));
                 return;
+            }
         }
+
+        AuditLogger.Log(new AuditEvent(
+            DateTimeOffset.UtcNow.ToString("o"),
+            ScriptIdentity,
+            "proc.exec",
+            binaryName,
+            AuditDecision.DENY,
+            "Missing capability declaration in manifest"
+        ));
 
         throw new Ps2SecurityException(
             "proc.exec",
@@ -191,8 +491,11 @@ public sealed class CapabilityManifest
                 continue;
             }
 
-            // Exact match
-            if (string.Equals(fullTarget, fullPattern, StringComparison.OrdinalIgnoreCase))
+            var normTarget = fullTarget.TrimEnd('/');
+            var normPattern = fullPattern.TrimEnd('/');
+
+            // Exact match (files or exact directory match)
+            if (string.Equals(normTarget, normPattern, StringComparison.OrdinalIgnoreCase))
                 return true;
 
             // Directory subtree match:
@@ -202,8 +505,7 @@ public sealed class CapabilityManifest
 
             if (isExplicitDir || isExistingDir)
             {
-                var dirPrefix = fullPattern.EndsWith('/') ? fullPattern : fullPattern + "/";
-                if (fullTarget.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase))
+                if (normTarget.StartsWith(normPattern + "/", StringComparison.OrdinalIgnoreCase))
                     return true;
             }
         }

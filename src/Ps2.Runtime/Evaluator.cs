@@ -19,10 +19,17 @@ public sealed class Evaluator
         CapabilityManifest manifest,
         string scriptDirectory,
         IReadOnlyList<string>? scriptArgs = null,
-        bool allowAll = false)
+        bool allowAll = false,
+        SecurityPolicy? policy = null,
+        IAuditLogger? auditLogger = null,
+        string? scriptIdentity = null)
     {
         _manifest = manifest;
         _manifest.AllowAll = allowAll || manifest.AllowAll;
+        if (policy != null) _manifest.ActivePolicy = policy;
+        if (auditLogger != null) _manifest.AuditLogger = auditLogger;
+        if (!string.IsNullOrEmpty(scriptIdentity)) _manifest.ScriptIdentity = scriptIdentity;
+
         _scriptDirectory = scriptDirectory;
         _scriptArgs = scriptArgs ?? Array.Empty<string>();
         _globalScope = new EnvironmentScope();
@@ -38,6 +45,14 @@ public sealed class Evaluator
 
     public Ps2Value Execute(ProgramNode program)
     {
+        EvaluatorSecretScrubber.InitializeSession();
+
+        // 1. Validate manifest schema
+        _manifest.Validate();
+
+        // 2. Pre-flight organizational policy enforcement
+        PolicyEngine.ValidateManifestAgainstPolicy(_manifest, _manifest.ActivePolicy);
+
         Ps2Value lastValue = Ps2Value.Null;
 
         foreach (var stmt in program.Statements)
@@ -70,13 +85,17 @@ public sealed class Evaluator
             if (secEx.Location == SourceLocation.Unknown) secEx.Location = stmt.Location;
             throw;
         }
-        catch (Ps2RuntimeException)
+        catch (Ps2PolicyViolationException)
         {
             throw;
         }
+        catch (Ps2RuntimeException runEx)
+        {
+            throw new Ps2RuntimeException(EvaluatorSecretScrubber.Scrub(runEx.Message), runEx.Location, runEx.InnerException);
+        }
         catch (Exception ex)
         {
-            throw new Ps2RuntimeException(ex.Message, stmt.Location, ex);
+            throw new Ps2RuntimeException(EvaluatorSecretScrubber.Scrub(ex.Message), stmt.Location, ex);
         }
     }
 

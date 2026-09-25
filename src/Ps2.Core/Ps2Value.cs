@@ -17,7 +17,8 @@ public enum Ps2ValueType
     Option,
     Result,
     Function,
-    NativeFunction
+    NativeFunction,
+    Secret
 }
 
 public sealed class Ps2Value : IEquatable<Ps2Value>
@@ -48,6 +49,7 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
 
     public static Ps2Value Ok(Ps2Value inner) => new(Ps2ValueType.Result, new Ps2Result(true, inner));
     public static Ps2Value Err(Ps2Value inner) => new(Ps2ValueType.Result, new Ps2Result(false, inner));
+    public static Ps2Value Secret(string value) => new(Ps2ValueType.Secret, new Ps2Secret(value));
 
     public static Ps2Value CreateFunction(FunctionDeclStatement decl, object closureScope)
         => new(Ps2ValueType.Function, new Ps2Function(decl, closureScope));
@@ -67,6 +69,7 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
         Ps2ValueType.Map => ((Dictionary<string, Ps2Value>)RawValue!).Count > 0,
         Ps2ValueType.Option => ((Ps2Option)RawValue!).HasValue,
         Ps2ValueType.Result => ((Ps2Result)RawValue!).IsOk,
+        Ps2ValueType.Secret => !string.IsNullOrEmpty(((Ps2Secret)RawValue!).Unmask()),
         _ => true
     };
 
@@ -94,6 +97,7 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
     public string AsString() => RawValue switch
     {
         null => "null",
+        Ps2Secret s => s.ToString(),
         string s => s,
         _ => ToString()
     };
@@ -110,6 +114,9 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
     public Ps2Result AsResult() =>
         RawValue as Ps2Result ?? throw new InvalidCastException($"Expected Result, found {Type}.");
 
+    public Ps2Secret AsSecret() =>
+        RawValue as Ps2Secret ?? throw new InvalidCastException($"Expected Secret, found {Type}.");
+
     public override string ToString()
     {
         return Type switch
@@ -123,6 +130,7 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
             Ps2ValueType.Map => "{" + string.Join(", ", ((Dictionary<string, Ps2Value>)RawValue!).Select(kv => $"\"{kv.Key}\": {kv.Value}")) + "}",
             Ps2ValueType.Option => ((Ps2Option)RawValue!).ToString(),
             Ps2ValueType.Result => ((Ps2Result)RawValue!).ToString(),
+            Ps2ValueType.Secret => "[REDACTED]",
             Ps2ValueType.Function => $"<fn {((Ps2Function)RawValue!).Decl.Name}>",
             Ps2ValueType.NativeFunction => $"<native fn {((Ps2NativeFunction)RawValue!).Name}>",
             _ => "<unknown>"
@@ -144,6 +152,7 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
             Ps2ValueType.String => string.Equals((string)RawValue!, (string)other.RawValue!, StringComparison.Ordinal),
             Ps2ValueType.Option => ((Ps2Option)RawValue!).Equals(other.RawValue),
             Ps2ValueType.Result => ((Ps2Result)RawValue!).Equals(other.RawValue),
+            Ps2ValueType.Secret => ((Ps2Secret)RawValue!).Equals(other.RawValue),
             _ => Equals(RawValue, other.RawValue)
         };
     }
@@ -151,6 +160,29 @@ public sealed class Ps2Value : IEquatable<Ps2Value>
     public override bool Equals(object? obj) => obj is Ps2Value val && Equals(val);
 
     public override int GetHashCode() => HashCode.Combine(Type, RawValue);
+}
+
+public sealed class Ps2Secret : IEquatable<Ps2Secret>
+{
+    private readonly string _secretValue;
+
+    public Ps2Secret(string secretValue)
+    {
+        _secretValue = secretValue ?? string.Empty;
+    }
+
+    public string Unmask() => _secretValue;
+
+    public override string ToString() => "[REDACTED]";
+
+    public bool Equals(Ps2Secret? other)
+    {
+        if (other is null) return false;
+        return string.Equals(_secretValue, other._secretValue, StringComparison.Ordinal);
+    }
+
+    public override bool Equals(object? obj) => obj is Ps2Secret s && Equals(s);
+    public override int GetHashCode() => _secretValue.GetHashCode();
 }
 
 public sealed record Ps2Option(bool HasValue, Ps2Value? Value)

@@ -74,6 +74,9 @@ public static class Ps2JsonEngine
                 WriteValue(writer, res.Value);
                 writer.WriteEndObject();
                 break;
+            case Ps2ValueType.Secret:
+                writer.WriteStringValue("[REDACTED]");
+                break;
             default:
                 writer.WriteStringValue(value.ToString());
                 break;

@@ -3,169 +3,177 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
 [![Language](https://img.shields.io/badge/engine-C%23%2010%20%2F%20.NET%2010-purple)]()
-[![Tests](https://img.shields.io/badge/tests-37%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)]()
+[![Release](https://img.shields.io/badge/release-v0.3.0--beta-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
-**PowerScript 2 (`ps2`)** is a next-generation, high-performance, **Zero-Trust** scripting language and execution engine. Built entirely in modern **C# (.NET 10)** with single-binary distribution, declarative pipeline operators (`|>`), algebraic null safety (`Option<T>`, `Result<T, E>`), and an unyielding capability-based security sandbox.
+**PowerScript 2 (`ps2`)** is an enterprise-grade **Secure Automation Runtime** engineered from the ground up for zero-trust infrastructure automation, CI/CD pipelines, and secure cloud operations. Built in modern **C# (.NET 10)**, PS2 combines single-binary deployment with an unyielding **Default-Deny** capability sandbox, organizational policy governance, structured audit logging, and automated secret hygiene.
+
+> 📖 Read the full architecture and security boundary documentation in [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
 
 ---
 
-## Why PS2? Zero-Trust vs. Traditional Scripting
+## Why PS2? Secure Automation vs. Traditional Scripting
 
-In traditional scripting environments (**Python**, **PowerShell**, **Bash**, **Node.js**), any imported script or downloaded utility executes with the **full privileges of the current user**. A simple `pip` dependency or administrative helper script can silently:
-- Read confidential credentials (`~/.ssh/id_rsa`, `~/.aws/credentials`, `%USERPROFILE%\.azure`).
-- Open arbitrary outbound sockets to exfiltrate company data (C2 telemetry).
-- Spawn unauthorized background subprocesses or crypto miners.
+In conventional scripting environments (**Python**, **PowerShell**, **Bash**, **Node.js**), scripts execute with the full privileges of the host process. A compromised package dependency, stolen pipeline script, or prompt-injected AI agent script can silently:
+- Dump critical credentials (`~/.ssh/id_rsa`, `~/.aws/credentials`, `%USERPROFILE%\.azure`).
+- Exfiltrate infrastructure secrets over outbound HTTP sockets.
+- Spawn unauthorized child processes (`powershell -c ...`, `curl -d ...`, crypto miners).
+- Leak plaintext passwords and API keys into CI/CD build logs and console output.
 
-**PS2 fundamentally solves this supply-chain and automation vulnerability.** Every PS2 script starts with **zero privileges** (`Default Deny`). A script cannot touch a single file, resolve a network host, read an environment variable, or execute an external binary unless explicitly declared in its `#manifest` header.
+**PS2 solves this fundamental supply-chain and automation vulnerability.** Every PS2 script starts with **zero privileges** (`Default Deny`). A script cannot touch a single file, resolve a network host, read an environment variable, or execute an external binary unless explicitly declared in its `#manifest` header and approved by organizational policy.
 
 ```
                       ┌──────────────────────────────────────────────┐
-                      │             ps2 Execution Engine             │
+                      │        ps2 Secure Automation Runtime         │
                       │                                              │
                       │   ┌──────────────────────────────────────┐   │
-                      │   │       Capability Manifest            │   │
-                      │   │  requires { fs.read: ["./data"] }    │   │
+                      │   │    Organizational Policy Engine      │   │
+                      │   │  (default | strict | production)     │   │
                       │   └──────────────────┬───────────────────┘   │
-                      │                      │                       │
-                      │           Checked at Runtime                 │
+                      │                      │ Pre-Flight Gate       │
                       │                      ▼                       │
                       │   ┌──────────────────────────────────────┐   │
-                      │   │        Zero-Trust Sandbox Gate       │   │
+                      │   │      Capability Manifest v1.0        │   │
+                      │   │  requires { fs.read, net.http, ... } │   │
+                      │   └──────────────────┬───────────────────┘   │
+                      │                      │ Checked on Every Call │
+                      │                      ▼                       │
+                      │   ┌──────────────────────────────────────┐   │
+                      │   │       Zero-Trust Sandbox Gate        │   │
                       │   └──────┬────────────────────────┬──────┘   │
                       └──────────┼────────────────────────┼──────────┘
                                  │                        │
-                       [Allowed Target]         [Unauthorized Access]
+                       [Allowed Operation]      [Unauthorized Access]
                                  │                        │
                                  ▼                        ▼
-                        Operating System        🛡️ Ps2SecurityException
-                       (File / Net / Proc)      with Rich Rust-Style Diagnostics
+                        Safe System Call        🛡️ Ps2SecurityException
+                        (File / Net / Env)       + Structured Audit Event (DENY)
+                                 │
+                                 ▼
+                     Structured Audit Log (ALLOW)
 ```
 
 ---
 
-## Key Highlights
+## Key Features & Enterprise Capabilities
 
-- 🛡️ **Zero-Trust Security Sandbox**: Scripts run with zero privileges by default. Unauthorized disk writes, socket connections, environment reads, and process executions are blocked before touching the OS.
-- 📜 **Declarative Capability Manifest**: Permissions are transparently auditable at the top of the file:
-  `#manifest requires { fs.read: [...], net.http: [...] } #endmanifest`.
-- ⚡ **Lightning Fast & Self-Contained**: Powered by modern C# (.NET 10) with single-file native binaries (`ps2.exe`) for instant startup.
-- 💻 **Interactive REPL**: Rich interactive shell with line history, ANSI color output, and multi-turn evaluation.
-- 🔀 **Declarative Pipe Operator (`|>`)**: Smooth, functional data transformations over structured JSON, arrays, maps, and streams.
-- 🧱 **Algebraic Data Types & Pattern Matching**: Native `Option<T>` (`Some(val)`, `None`), `Result<T, E>` (`Ok(val)`, `Err(err)`), and expressive `match` expressions.
-- 🛠️ **First-Class Developer Tooling**:
-  - `ps2 init <name>`: Scaffold new PS2 projects instantly.
-  - `ps2 fmt <file> [--check]`: Canonical code formatter.
-  - `ps2 lint <file>`: Static analysis for undeclared capabilities, unused variables, and unreachable code.
-  - `ps2 check <file>`: Full diagnostic report on signature, syntax, capabilities, and linting.
-  - `ps2 bundle <file> -o <bundle>`: Self-contained, tamper-evident deployment packages.
-  - `ps2 sign` & `ps2 verify`: Cryptographic SHA-256 integrity validation.
-- 🪟 **Deep OS Integration**:
-  - **Windows**: Native registry association (`.ps2` -> `ps2.exe run "%1" %*`) via `ps2 register`.
-  - **Unix / macOS**: Full Shebang support (`#!/usr/bin/env ps2`).
-
----
-
-## Architectural Structure
-
-```
-ps2/
-├── src/
-│   ├── Ps2.Core/       # AST Nodes, Tokens, Value System, Manifest, Formatter, Linter & Diagnostics
-│   ├── Ps2.Parser/     # Zero-allocation Lexer, AST Parser, Capability Manifest Parser
-│   ├── Ps2.Runtime/    # Execution Evaluator, Zero-Trust Sandbox Gate, Pipeline Engine, StdLib, REPL
-│   ├── Ps2.Bundler/    # Package Bundler (.ps2bundle) & SHA-256 Script Signer
-│   └── Ps2.Cli/        # Command-line interface & Windows Registry integration
-├── tests/
-│   └── Ps2.Tests/      # 37 Unit, Integration, Adversarial & Tooling Tests (100% passing)
-├── extensions/
-│   └── vscode/         # Official VS Code Extension (syntax grammar, snippets, tooling)
-├── examples/           # Ready-to-run demo scripts
-└── distribution/       # Packaging manifests
-```
+- 🛡️ **Default-Deny Sandbox**: Filesystem, network, environment variables, and process execution are disabled by default.
+- 🏢 **Organizational Policy Engine**: Enforce cluster-wide security policies (`production`, `strict`, or custom JSON) with pre-flight AST validation before any statement runs.
+- 📜 **Versioned Capability Manifest (`version: "1.0"`)**: Transparent, auditable permission declarations validated prior to runtime evaluation.
+- 🔍 **Structured JSON Audit Logging**: High-throughput audit trail recording every ALLOW and DENY authorization decision with timestamps, operations, resources, and script identities (SOC2/ISO27001 ready).
+- 🔒 **Native Secret Hygiene**: Dedicated `Ps2Secret` type masking values as `[REDACTED]` in console logs, string conversions, and JSON serialization. Automatic scrubbing of secret values from runtime exception messages and stack traces.
+- 🔀 **Declarative Pipelines (`|>`)**: Expressive, functional data transformations over structured JSON, arrays, maps, and streams.
+- 🧱 **Algebraic Data Types & Safety**: Native `Option<T>` (`Some(val)`, `None`), `Result<T, E>` (`Ok(val)`, `Err(err)`), and exhaustive `match` expressions.
+- 📦 **Tamper-Evident Bundling**: Package scripts and assets into self-contained `.ps2bundle` files with cryptographic SHA-256 integrity validation.
+- 🛠️ **Full CLI Tooling**: `run`, `check`, `init`, `fmt`, `lint`, `bundle`, `sign`, `verify`, and native Windows file association registration (`register`).
 
 ---
 
 ## Language Tour
 
-### 1. Capability Manifest (Zero-Trust Sandbox)
+### 1. Versioned Capability Manifest
 ```ps2
 #manifest
 requires {
-    fs.read: ["./data"],
-    fs.write: ["./out.json"],
-    net.http: ["api.github.com"],
-    env: ["USERNAME", "TOKEN"],
+    version: "1.0",
+    fs.read: ["./config", "./data"],
+    fs.write: ["./reports"],
+    net.http: ["api.internal.company.com"],
+    env: ["DEPLOY_ENV", "API_SECRET_TOKEN"],
     proc.exec: ["git"]
 }
 #endmanifest
 
-let user = match sys.env("USERNAME") {
-    Some(u) => u,
-    None => "Guest"
-};
+// Accessing environment variable safely
+let env = unwrap_or(sys.env("DEPLOY_ENV"), "production");
+println("Deploying to: " + env);
 
-println("Authenticated user: " + user);
+// Reading a secret (never printed in plaintext!)
+let secretToken = unwrap(sys.secret("API_SECRET_TOKEN"));
+println("Token loaded: " + secretToken); // Output: Token loaded: [REDACTED]
 ```
 
-### 2. Declarative Pipelines (`|>`)
+### 2. Functional Pipelines (`|>`) and JSON
 ```ps2
-let raw_data = "[{\"name\": \"Alpha\", \"load\": 85}, {\"name\": \"Beta\", \"load\": 42}]";
+let rawMetrics = "[{\"service\": \"api\", \"latency_ms\": 45}, {\"service\": \"worker\", \"latency_ms\": 120}]";
 
-let critical_servers = raw_data
+let slowServices = rawMetrics
     |> json.parse()
-    |> filter(s => s["load"] > 80)
-    |> map(s => s["name"]);
+    |> filter(s => s["latency_ms"] > 50)
+    |> map(s => s["service"]);
 
-println("Critical nodes: " + json.stringify(critical_servers));
+println("Slow services: " + json.stringify(slowServices));
 ```
 
-### 3. Algebraic Data Types (`Option` & `Result`) & Pattern Matching
+### 3. Algebraic Data Types (`Option` & `Result`)
 ```ps2
-fn divide(a: float, b: float) {
-    if b == 0.0 {
-        return Err("Division by zero!");
+fn fetch_record(id: int) {
+    if id <= 0 {
+        return Err("Invalid record ID");
     }
-    return Ok(a / b);
+    return Ok({ "id": id, "status": "active" });
 }
 
-let result = divide(100.0, 4.0);
-
-match result {
-    Ok(val) => println("Result: " + val),
-    Err(e)  => println("Calculation error: " + e)
+match fetch_record(42) {
+    Ok(rec) => println("Loaded record for: " + rec["id"]),
+    Err(e)  => println("Query failed: " + e)
 }
 ```
 
 ---
 
-## High-Clarity Rust-Style Diagnostics
+## Enterprise Policy Enforcement
 
-When an error or security violation occurs, PS2 produces high-clarity diagnostics pinpointing the exact line and column with source previews and actionable suggestions:
+Enforce organizational boundaries on scripts without modifying code:
 
+```bash
+# Run with Production policy (blocks process execution, external network, critical system directories)
+ps2 run deploy.ps2 --policy production
+
+# Run with custom JSON corporate policy
+ps2 run deploy.ps2 --policy ./corporate-policy.json
+
+# Pre-flight compliance audit without executing
+ps2 check deploy.ps2 --policy production
 ```
-error[PS2_SECURITY]: [Zero-Trust Sandbox] Read access denied to '/etc/shadow'.
-  --> scripts/backup.ps2:5:14
-   |
- 4 | let target = "/etc/shadow";
- 5 | let data = fs.read_file(target);
-   |            ^
-   = help: Declare permission in '#manifest requires { fs.read: ["/etc/shadow"] }' or run with --allow-all.
+
+### Sample Policy Output on Unauthorized Script
+```
+[SECURITY POLICY VIOLATION] Policy 'production' blocked proc.exec:
+  Resource: powershell.exe
+  Reason:   Policy 'production' prohibits process execution, but manifest requests execution of: [powershell.exe].
 ```
 
 ---
 
-## CLI Guide
+## Structured Audit Logging
+
+Generate machine-readable JSON Lines audit trails for SIEM ingestion (Splunk, Datadog, Elastic):
+
+```bash
+ps2 run deploy.ps2 --audit-log /var/log/ps2/audit.jsonl
+```
+
+Sample audit log output:
+```json
+{"timestamp":"2026-09-25T16:55:00.123Z","script_identity":"deploy.ps2","operation":"fs.read","resource":"C:/app/config.json","decision":"ALLOW","reason":"Capability granted by manifest"}
+{"timestamp":"2026-09-25T16:55:00.125Z","script_identity":"deploy.ps2","operation":"proc.exec","resource":"cmd.exe","decision":"DENY","reason":"Missing capability declaration in manifest"}
+```
+
+---
+
+## CLI Reference
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
 | `ps2` | Start interactive REPL shell | `ps2` |
-| `ps2 run <file>` | Run script or bundle in sandbox | `ps2 run main.ps2 --allow-all` |
+| `ps2 run <file>` | Run script with Zero-Trust sandbox | `ps2 run main.ps2 --policy production` |
+| `ps2 check <file>` | Verify signature, syntax, capabilities & policy | `ps2 check main.ps2 --policy strict` |
 | `ps2 init [name]` | Initialize starter PS2 project template | `ps2 init my_automation` |
 | `ps2 fmt <file>` | Format source according to official style | `ps2 fmt main.ps2 --check` |
 | `ps2 lint <file>` | Static analysis for undeclared permissions | `ps2 lint main.ps2` |
-| `ps2 check <file>` | Verify signature, syntax, capabilities | `ps2 check main.ps2` |
-| `ps2 bundle <file>`| Package script and assets into bundle | `ps2 bundle main.ps2 -o app.ps2bundle` |
+| `ps2 bundle <file>`| Package script and assets into `.ps2bundle` | `ps2 bundle main.ps2 -o app.ps2bundle` |
 | `ps2 sign <file>` | Embed SHA-256 integrity hash header | `ps2 sign main.ps2` |
 | `ps2 verify <file>`| Verify embedded cryptographic signature | `ps2 verify main.ps2` |
 | `ps2 register` | Register `.ps2` Windows file association | `ps2 register` |
@@ -173,33 +181,18 @@ error[PS2_SECURITY]: [Zero-Trust Sandbox] Read access denied to '/etc/shadow'.
 
 ---
 
-## Security Hardening Details
+## Testing & Verification
 
-1. **Path Canonicalization & Directory Boundary Defense**:
-   All filesystem access is resolved via `ResolveCanonicalPath`, stripping Windows Alternate Data Streams (`::$DATA`) and traversing symbolic escapes (`../`). Directory permissions require trailing slash or directory existence to prevent partial name collisions (e.g. `/allowed` vs `/allowed_unauthorized`).
-2. **Process Argument Injection Defense**:
-   Subprocess execution in `sys.exec` uses `psi.ArgumentList` rather than concatenated shell strings, eliminating argument injection and shell metacharacter vulnerabilities.
-3. **SSRF & HTTP Redirect Validation**:
-   `net.http_get` and `net.http_post` disable automatic redirects (`AllowAutoRedirect = false`). Each redirect hop is explicitly checked against the capability whitelist before following. Non-HTTP/HTTPS protocols (`file://`, `gopher://`) are strictly rejected.
-
----
-
-## Verification & Testing
-
-Run the full test suite with:
+Run the full automated test suite:
 
 ```bash
 dotnet test
 ```
 
-**37 Unit & Adversarial Tests** (100% passing):
-- Lexer tokenization & shebang parsing
-- Manifest parsing & grammar syntax validation
-- Sandbox access restrictions (file read/write denial, network denial, path traversal protection)
-- Adversarial attack tests (Windows ADS `::$DATA`, prefix collision, argument injection, SSRF redirect)
-- Pipeline operator (`|>`) transformations
-- Option & Result algebraic pattern matching
-- Cryptographic SHA-256 signing and bundle tamper detection
-- Diagnostic rendering with pointer carets
-- Formatter canonicalization and Linter capability/unused variable detection
-- CLI end-to-end integration (`init`, `fmt`, `lint`)
+**52 Passing Automated Tests** (100% passing):
+- Default-Deny capability enforcement across all operations (`fs.read`, `fs.write`, `net.http`, `env`, `proc.exec`)
+- Pre-flight organizational policy enforcement (`default`, `strict`, `production`, and custom JSON)
+- Structured audit event logging (ALLOW and DENY trails with metadata)
+- Secret masking, redaction in JSON serialization, and exception message scrubbing
+- Windows ADS (`::$DATA`) stripping, directory subtree escapes, and SSRF redirect hops
+- Bundling, cryptographic signing, formatting, and linting

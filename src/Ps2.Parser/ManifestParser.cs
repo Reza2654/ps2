@@ -37,7 +37,7 @@ public sealed class ManifestParser
 
                     while (i < tokens.Count && tokens[i].Type != TokenType.CloseBrace && tokens[i].Type != TokenType.ManifestEnd && tokens[i].Type != TokenType.Eof)
                     {
-                        // Capability name like 'fs.read' or 'net.http' or 'env'
+                        // Capability name like 'fs.read' or 'net.http' or 'env' or 'version'
                         string capName = tokens[i].Text;
                         i++;
 
@@ -57,8 +57,23 @@ public sealed class ManifestParser
                             i++; // skip :
                         }
 
+                        // Version / schema directive
+                        if (string.Equals(capName, "version", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(capName, "schema", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (i < tokens.Count && tokens[i].Type == TokenType.StringLiteral)
+                            {
+                                manifest.SchemaVersion = (string)tokens[i].LiteralValue!;
+                                i++;
+                            }
+                            else if (i < tokens.Count && (tokens[i].Type == TokenType.FloatLiteral || tokens[i].Type == TokenType.IntLiteral))
+                            {
+                                manifest.SchemaVersion = tokens[i].Text;
+                                i++;
+                            }
+                        }
                         // Parse list of strings or single string
-                        if (i < tokens.Count && tokens[i].Type == TokenType.OpenBracket)
+                        else if (i < tokens.Count && tokens[i].Type == TokenType.OpenBracket)
                         {
                             i++; // skip '['
                             while (i < tokens.Count && tokens[i].Type != TokenType.CloseBracket && tokens[i].Type != TokenType.Eof)
@@ -89,6 +104,15 @@ public sealed class ManifestParser
                             AddCapabilityItem(manifest, capName, (string)tokens[i].LiteralValue!);
                             i++;
                         }
+                        else
+                        {
+                            // Unrecognized token or structure for capability
+                            throw new Ps2SecurityException(
+                                "manifest",
+                                capName,
+                                $"[Zero-Trust Sandbox] Invalid format for capability '{capName}'."
+                            );
+                        }
 
                         if (i < tokens.Count && tokens[i].Type == TokenType.Comma)
                         {
@@ -107,6 +131,7 @@ public sealed class ManifestParser
                     i++; // skip #endmanifest
                 }
 
+                manifest.Validate();
                 continue;
             }
 
@@ -137,6 +162,12 @@ public sealed class ManifestParser
             case "process":
                 manifest.AddProcExec(item);
                 break;
+            default:
+                throw new Ps2SecurityException(
+                    "manifest",
+                    capabilityName,
+                    $"[Zero-Trust Sandbox] Unknown capability '{capabilityName}'. Supported capabilities are: 'version', 'fs.read', 'fs.write', 'net.http', 'env', 'proc.exec'."
+                );
         }
     }
 }
