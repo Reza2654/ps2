@@ -1,0 +1,31 @@
+#signature: sha256:75d235ec52f948d12023c1750803fdbd8280fda3ccbd6bb6daa9f555fb774c5e
+// 03_zero_trust_security.ps2 - Capability Manifest & Zero-Trust Sandbox
+
+#manifest
+requires {
+    fs.write: ["./sandbox_out.json"],
+    env: ["USERNAME", "USER", "OS"]
+}
+#endmanifest
+
+println("--- Zero-Trust Sandbox Active ---");
+
+let user_opt = sys.env("USERNAME");
+let current_user = match user_opt {
+    Some(u) => u,
+    None => "Anonymous"
+};
+
+println("Permitted Environment Access: Current User = " + current_user);
+
+let report = {
+    "generated_by": "ps2-engine",
+    "user": current_user,
+    "timestamp": sys.time_ms(),
+    "sandbox_status": "SECURE_RESTRICTED"
+};
+
+println("Writing report to declared sandbox path: ./sandbox_out.json");
+fs.write_file("./sandbox_out.json", json.stringify(report));
+
+println("Successfully written report inside sandbox boundary!");

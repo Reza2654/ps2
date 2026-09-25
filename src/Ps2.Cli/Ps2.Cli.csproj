@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ps2.Core\Ps2.Core.csproj" />
+    <ProjectReference Include="..\Ps2.Parser\Ps2.Parser.csproj" />
+    <ProjectReference Include="..\Ps2.Runtime\Ps2.Runtime.csproj" />
+    <ProjectReference Include="..\Ps2.Bundler\Ps2.Bundler.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <OptimizationPreference>Speed</OptimizationPreference>
+    <PublishAot Condition="'$(AOT)' == 'true'">true</PublishAot>
+  </PropertyGroup>
+
+</Project>

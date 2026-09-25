@@ -1,0 +1,45 @@
+// 04_algebraic_types.ps2 - Algebraic Data Types (Option, Result) & Pattern Matching
+
+fn divide(numerator: float, denominator: float) {
+    if denominator == 0.0 {
+        return Err("DivisionByZero: denominator cannot be zero");
+    }
+    return Ok(numerator / denominator);
+}
+
+fn lookup_config(key: string) {
+    let configs = {
+        "db_host": "127.0.0.1",
+        "db_port": "5432"
+    };
+
+    let val = configs[key];
+    if val != null {
+        return Some(val);
+    }
+    return None();
+}
+
+println("Testing Result<T, E>:");
+let good_result = divide(100.0, 4.0);
+let bad_result = divide(42.0, 0.0);
+
+match good_result {
+    Ok(val) => println("Good result value: " + val),
+    Err(err) => println("Error encountered: " + err)
+}
+
+match bad_result {
+    Ok(val) => println("Good result value: " + val),
+    Err(err) => println("Caught safe error: " + err)
+}
+
+println("\nTesting Option<T>:");
+let host = lookup_config("db_host");
+let missing = lookup_config("secret_key");
+
+let resolved_host = unwrap_or(host, "localhost");
+let resolved_missing = unwrap_or(missing, "DEFAULT_VALUE");
+
+println("Resolved host: " + resolved_host);
+println("Resolved missing: " + resolved_missing);

@@ -1,0 +1,11 @@
+# Build and binary outputs
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Keep distribution artifacts folder if needed, but ignore intermediate binaries inside src
+artifacts/bin/*.pdb

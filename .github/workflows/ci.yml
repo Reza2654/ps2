@@ -1,0 +1,79 @@
+name: PS2 Build & Release Matrix
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Dependencies
+        run: dotnet restore Ps2.slnx
+
+      - name: Build Solution
+        run: dotnet build Ps2.slnx --configuration Release --no-restore
+
+      - name: Run Automated Test Suite
+        run: dotnet test tests/Ps2.Tests/Ps2.Tests.csproj --configuration Release --no-build --verbosity normal
+
+  publish-binaries:
+    name: Publish Native Matrix (${{ matrix.target }})
+    needs: build-and-test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: win-x64
+            runner: windows-latest
+            artifact: ps2-win-x64.zip
+          - target: win-arm64
+            runner: windows-latest
+            artifact: ps2-win-arm64.zip
+          - target: linux-x64
+            runner: ubuntu-latest
+            artifact: ps2-linux-x64.tar.gz
+          - target: linux-arm64
+            runner: ubuntu-latest
+            artifact: ps2-linux-arm64.tar.gz
+          - target: osx-x64
+            runner: macos-latest
+            artifact: ps2-osx-x64.tar.gz
+          - target: osx-arm64
+            runner: macos-latest
+            artifact: ps2-osx-arm64.tar.gz
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Standalone Binary
+        run: |
+          dotnet publish src/Ps2.Cli/Ps2.Cli.csproj -c Release -r ${{ matrix.target }} --self-contained -p:PublishSingleFile=true -o ./dist/${{ matrix.target }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ./dist/${{ matrix.target }}

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ps2.Bundler/Ps2.Bundler.csproj" />
+    <Project Path="src/Ps2.Cli/Ps2.Cli.csproj" />
+    <Project Path="src/Ps2.Core/Ps2.Core.csproj" />
+    <Project Path="src/Ps2.Parser/Ps2.Parser.csproj" />
+    <Project Path="src/Ps2.Runtime/Ps2.Runtime.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ps2.Tests/Ps2.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+PackageIdentifier: PowerScript2.ps2
+PackageVersion: 2.0.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
+---
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: PowerScript2.ps2
+PackageVersion: 2.0.0
+PackageLocale: en-US
+Publisher: PowerScript2
+PublisherUrl: https://github.com/PowerScript2/ps2
+PackageName: ps2
+PackageUrl: https://github.com/PowerScript2/ps2
+License: MIT
+LicenseUrl: https://github.com/PowerScript2/ps2/blob/main/LICENSE
+ShortDescription: PowerScript 2 (ps2) - High-performance Zero-Trust scripting runtime.
+Description: |
+  PowerScript 2 (ps2) is a next-generation scripting language and execution engine featuring 
+  Zero-Trust sandboxing, ahead-of-time pipeline operators (|>), native Option and Result algebraic 
+  types, and single-file binary self-contained packaging.
+Tags:
+  - powershell
+  - scripting
+  - sandbox
+  - zero-trust
+  - pipeline
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
+---
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: PowerScript2.ps2
+PackageVersion: 2.0.0
+Platform:
+  - Windows.Desktop
+InstallModes:
+  - silent
+  - interactive
+Installers:
+  - Architecture: x64
+    InstallerType: portable
+    InstallerUrl: https://github.com/PowerScript2/ps2/releases/download/v2.0.0/ps2-win-x64.zip
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+    Commands:
+      - ps2
+  - Architecture: arm64
+    InstallerType: portable
+    InstallerUrl: https://github.com/PowerScript2/ps2/releases/download/v2.0.0/ps2-win-arm64.zip
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+    Commands:
+      - ps2
+ManifestType: installer
+ManifestVersion: 1.6.0

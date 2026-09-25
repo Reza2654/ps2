@@ -1,0 +1,29 @@
+// 02_pipeline_data.ps2 - Declarative Pipe Operators (|>) & Structured Data
+
+let raw_data = "[{\"id\": 1, \"name\": \"Server-Alpha\", \"load\": 85, \"region\": \"us-east\"}, {\"id\": 2, \"name\": \"Server-Beta\", \"load\": 42, \"region\": \"eu-central\"}, {\"id\": 3, \"name\": \"Server-Gamma\", \"load\": 94, \"region\": \"us-east\"}, {\"id\": 4, \"name\": \"Server-Delta\", \"load\": 12, \"region\": \"ap-south\"}]";
+
+println("Processing servers with pipeline (|>) operator...");
+
+let critical_servers = raw_data
+    |> json.parse()
+    |> filter(s => s["load"] > 80)
+    |> map(s => {
+        return {
+            "server": s["name"],
+            "status": "CRITICAL",
+            "cpu_percent": s["load"]
+        };
+    });
+
+println("\nFiltered Critical Servers:");
+critical_servers 
+    |> json.stringify() 
+    |> println();
+
+let numbers = [10, 5, 2, 8, 1, 9, 3];
+let sorted_even_doubled = numbers
+    |> filter(n => n % 2 == 0)
+    |> sort()
+    |> map(n => n * 2);
+
+println("\nTransformed numbers pipeline: " + sorted_even_doubled);

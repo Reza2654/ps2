@@ -1,0 +1,18 @@
+// 01_hello.ps2 - Hello World & Language Ergonomics in ps2
+
+let app_name: string = "PowerScript 2 (ps2)";
+let version: float = 2.0;
+let is_ready: bool = true;
+
+println("========================================");
+println(" Welcome to " + app_name + " v" + version);
+println(" Engine: C# .NET 10 (Zero-Trust Sandbox)");
+println("========================================");
+
+fn add_bonus(score: int, multiplier: int) -> int {
+    return score * multiplier;
+}
+
+let base_score = 100;
+let final_score = add_bonus(base_score, 3);
+println("Calculated Final Score: " + final_score);
