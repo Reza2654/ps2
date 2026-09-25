@@ -2,7 +2,7 @@
   "name": "ps2-vscode",
   "displayName": "PowerScript 2 (ps2) Language Support",
   "description": "Rich syntax highlighting, pipeline operators, snippets, and zero-trust capability tooling for PowerScript 2 (.ps2)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "PowerScript2",
   "engines": {
     "vscode": "^1.75.0"

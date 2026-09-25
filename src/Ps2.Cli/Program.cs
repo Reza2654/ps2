@@ -13,7 +13,7 @@ namespace Ps2.Cli;
 
 public static class Program
 {
-    private const string Version = "0.1.0-alpha (Native .NET 10 Engine)";
+    private const string Version = "0.2.0-alpha (Enterprise Hardening & Tooling)";
 
     public static int Main(string[] args)
     {
