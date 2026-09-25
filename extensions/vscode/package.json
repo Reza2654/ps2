@@ -1,14 +1,17 @@
 {
   "name": "ps2-vscode",
   "displayName": "PowerScript 2 (ps2) Language Support",
-  "description": "Rich syntax highlighting, pipeline operators, and capability manifest support for PowerScript 2 (.ps2)",
+  "description": "Rich syntax highlighting, pipeline operators, snippets, and zero-trust capability tooling for PowerScript 2 (.ps2)",
   "version": "0.1.0",
   "publisher": "PowerScript2",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Snippets",
+    "Linters",
+    "Formatters"
   ],
   "contributes": {
     "languages": [
@@ -30,6 +33,12 @@
         "language": "ps2",
         "scopeName": "source.ps2",
         "path": "./syntaxes/ps2.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "ps2",
+        "path": "./snippets/ps2.code-snippets"
       }
     ]
   }

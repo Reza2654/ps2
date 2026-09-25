@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Ps2.Parser\Ps2.Parser.csproj" />
     <ProjectReference Include="..\..\src\Ps2.Runtime\Ps2.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Ps2.Bundler\Ps2.Bundler.csproj" />
+    <ProjectReference Include="..\..\src\Ps2.Cli\Ps2.Cli.csproj" />
   </ItemGroup>
 
 </Project>

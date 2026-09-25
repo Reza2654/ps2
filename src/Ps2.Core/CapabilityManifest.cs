@@ -23,19 +23,21 @@ public sealed class CapabilityManifest
     private static string NormalizePathPattern(string path)
     {
         var cleaned = path.Trim().Replace('\\', '/');
-        if (cleaned.EndsWith('/') && cleaned.Length > 1)
+        // Preserve trailing slash if explicitly specified as directory marker
+        bool isExplicitDir = cleaned.EndsWith('/') && cleaned.Length > 1;
+        if (isExplicitDir)
         {
-            cleaned = cleaned.TrimEnd('/');
+            cleaned = cleaned.TrimEnd('/') + "/";
         }
         return cleaned;
     }
 
-    public void EnsureFsReadAllowed(string targetPath, string? baseDirectory = null)
+    public string EnsureFsReadAllowed(string targetPath, string? baseDirectory = null)
     {
-        if (AllowAll) return;
+        if (AllowAll) return ResolveCanonicalPath(targetPath, baseDirectory);
 
-        if (IsPathMatching(targetPath, FsRead, baseDirectory))
-            return;
+        if (IsPathMatching(targetPath, FsRead, baseDirectory, out var canonicalPath))
+            return canonicalPath;
 
         throw new Ps2SecurityException(
             "fs.read",
@@ -44,12 +46,12 @@ public sealed class CapabilityManifest
         );
     }
 
-    public void EnsureFsWriteAllowed(string targetPath, string? baseDirectory = null)
+    public string EnsureFsWriteAllowed(string targetPath, string? baseDirectory = null)
     {
-        if (AllowAll) return;
+        if (AllowAll) return ResolveCanonicalPath(targetPath, baseDirectory);
 
-        if (IsPathMatching(targetPath, FsWrite, baseDirectory))
-            return;
+        if (IsPathMatching(targetPath, FsWrite, baseDirectory, out var canonicalPath))
+            return canonicalPath;
 
         throw new Ps2SecurityException(
             "fs.write",
@@ -62,11 +64,35 @@ public sealed class CapabilityManifest
     {
         if (AllowAll) return;
 
-        string host = urlOrHost;
-        if (Uri.TryCreate(urlOrHost, UriKind.Absolute, out var uri))
+        Uri uri;
+        if (Uri.TryCreate(urlOrHost, UriKind.Absolute, out var parsedUri))
         {
-            host = uri.Host;
+            uri = parsedUri;
         }
+        else if (Uri.TryCreate("https://" + urlOrHost, UriKind.Absolute, out var fallbackUri))
+        {
+            uri = fallbackUri;
+        }
+        else
+        {
+            throw new Ps2SecurityException(
+                "net.http",
+                urlOrHost,
+                $"[Zero-Trust Sandbox] Malformed URL or host: '{urlOrHost}'."
+            );
+        }
+
+        // Protocol Whitelist
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new Ps2SecurityException(
+                "net.http",
+                urlOrHost,
+                $"[Zero-Trust Sandbox] Prohibited network protocol '{uri.Scheme}'. Only HTTP and HTTPS are permitted."
+            );
+        }
+
+        string host = uri.Host;
 
         foreach (var rule in NetHttp)
         {
@@ -120,23 +146,34 @@ public sealed class CapabilityManifest
         );
     }
 
-    private static bool IsPathMatching(string targetPath, IEnumerable<string> allowedPatterns, string? baseDirectory)
+    private static string ResolveCanonicalPath(string targetPath, string? baseDirectory)
     {
-        string fullTarget;
+        var cleaned = targetPath.Trim();
+        // Strip Windows Alternate Data Streams suffix if present
+        int adsIdx = cleaned.IndexOf("::$DATA", StringComparison.OrdinalIgnoreCase);
+        if (adsIdx >= 0)
+        {
+            cleaned = cleaned.Substring(0, adsIdx);
+        }
+
+        if (Path.IsPathRooted(cleaned))
+        {
+            return Path.GetFullPath(cleaned).Replace('\\', '/');
+        }
+
+        var baseDir = baseDirectory != null ? Path.GetFullPath(baseDirectory) : Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(baseDir, cleaned)).Replace('\\', '/');
+    }
+
+    private static bool IsPathMatching(string targetPath, IEnumerable<string> allowedPatterns, string? baseDirectory, out string fullTarget)
+    {
         try
         {
-            if (Path.IsPathRooted(targetPath))
-            {
-                fullTarget = Path.GetFullPath(targetPath).Replace('\\', '/');
-            }
-            else
-            {
-                var baseDir = baseDirectory ?? Directory.GetCurrentDirectory();
-                fullTarget = Path.GetFullPath(Path.Combine(baseDir, targetPath)).Replace('\\', '/');
-            }
+            fullTarget = ResolveCanonicalPath(targetPath, baseDirectory);
         }
         catch
         {
+            fullTarget = targetPath;
             return false;
         }
 
@@ -145,23 +182,30 @@ public sealed class CapabilityManifest
             if (rawPattern == "*") return true;
 
             string fullPattern;
-            if (Path.IsPathRooted(rawPattern))
+            try
             {
-                fullPattern = Path.GetFullPath(rawPattern).Replace('\\', '/');
+                fullPattern = ResolveCanonicalPath(rawPattern, baseDirectory);
             }
-            else
+            catch
             {
-                var baseDir = baseDirectory ?? Directory.GetCurrentDirectory();
-                fullPattern = Path.GetFullPath(Path.Combine(baseDir, rawPattern)).Replace('\\', '/');
+                continue;
             }
 
+            // Exact match
             if (string.Equals(fullTarget, fullPattern, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            // Check if fullTarget is inside fullPattern directory
-            if (!fullPattern.EndsWith('/')) fullPattern += "/";
-            if (fullTarget.StartsWith(fullPattern, StringComparison.OrdinalIgnoreCase))
-                return true;
+            // Directory subtree match:
+            // Only allow prefix containment if pattern was specified as directory or is an existing directory
+            bool isExplicitDir = rawPattern.EndsWith('/') || rawPattern.EndsWith('\\');
+            bool isExistingDir = Directory.Exists(fullPattern);
+
+            if (isExplicitDir || isExistingDir)
+            {
+                var dirPrefix = fullPattern.EndsWith('/') ? fullPattern : fullPattern + "/";
+                if (fullTarget.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
         }
 
         return false;

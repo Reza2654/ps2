@@ -7,5 +7,7 @@
 *.userosscache
 *.sln.docstates
 
-# Keep distribution artifacts folder if needed, but ignore intermediate binaries inside src
-artifacts/bin/*.pdb
+# Distribution and binary artifacts
+artifacts/
+dist/
+

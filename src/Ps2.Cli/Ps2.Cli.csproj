@@ -9,11 +9,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>ps2</AssemblyName>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishReadyToRun>true</PublishReadyToRun>
     <OptimizationPreference>Speed</OptimizationPreference>
     <PublishAot Condition="'$(AOT)' == 'true'">true</PublishAot>
   </PropertyGroup>

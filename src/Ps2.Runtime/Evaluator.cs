@@ -57,6 +57,31 @@ public sealed class Evaluator
 
     private Ps2Value ExecuteStatement(StatementNode stmt, EnvironmentScope scope)
     {
+        try
+        {
+            return ExecuteStatementCore(stmt, scope);
+        }
+        catch (ReturnException)
+        {
+            throw;
+        }
+        catch (Ps2SecurityException secEx)
+        {
+            if (secEx.Location == SourceLocation.Unknown) secEx.Location = stmt.Location;
+            throw;
+        }
+        catch (Ps2RuntimeException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new Ps2RuntimeException(ex.Message, stmt.Location, ex);
+        }
+    }
+
+    private Ps2Value ExecuteStatementCore(StatementNode stmt, EnvironmentScope scope)
+    {
         switch (stmt)
         {
             case VarDeclStatement varDecl:
@@ -206,6 +231,31 @@ public sealed class Evaluator
     }
 
     public Ps2Value EvaluateExpression(ExpressionNode expr, EnvironmentScope scope)
+    {
+        try
+        {
+            return EvaluateExpressionCore(expr, scope);
+        }
+        catch (ReturnException)
+        {
+            throw;
+        }
+        catch (Ps2SecurityException secEx)
+        {
+            if (secEx.Location == SourceLocation.Unknown) secEx.Location = expr.Location;
+            throw;
+        }
+        catch (Ps2RuntimeException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new Ps2RuntimeException(ex.Message, expr.Location, ex);
+        }
+    }
+
+    private Ps2Value EvaluateExpressionCore(ExpressionNode expr, EnvironmentScope scope)
     {
         switch (expr)
         {

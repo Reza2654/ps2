@@ -76,6 +76,11 @@ public sealed class Ps2Parser
             }
         }
 
+        if (_diagnostics.Count > 0)
+        {
+            throw new Ps2ParserException(_diagnostics);
+        }
+
         return new ProgramNode(manifest, signature, statements, loc);
     }
 

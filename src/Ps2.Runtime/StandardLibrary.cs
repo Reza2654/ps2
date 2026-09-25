@@ -11,10 +11,47 @@ namespace Ps2.Runtime;
 
 public static class StandardLibrary
 {
-    private static readonly HttpClient HttpClientInstance = new()
+    private static readonly SocketsHttpHandler SafeHttpHandler = new()
+    {
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromSeconds(10)
+    };
+
+    private static readonly HttpClient SafeHttpClient = new(SafeHttpHandler)
     {
         Timeout = TimeSpan.FromSeconds(15)
     };
+
+    private static HttpResponseMessage SendHttpRequestWithValidatedRedirects(
+        CapabilityManifest manifest,
+        Func<string, HttpRequestMessage> requestFactory,
+        string initialUrl,
+        int maxRedirects = 5)
+    {
+        string currentUrl = initialUrl;
+        for (int i = 0; i <= maxRedirects; i++)
+        {
+            manifest.EnsureNetHttpAllowed(currentUrl);
+            using var request = requestFactory(currentUrl);
+            var response = SafeHttpClient.Send(request);
+
+            int statusCode = (int)response.StatusCode;
+            if (statusCode is 301 or 302 or 303 or 307 or 308)
+            {
+                var location = response.Headers.Location;
+                if (location == null) return response;
+
+                Uri nextUri = location.IsAbsoluteUri ? location : new Uri(new Uri(currentUrl), location);
+                currentUrl = nextUri.ToString();
+                response.Dispose();
+                continue;
+            }
+
+            return response;
+        }
+
+        throw new InvalidOperationException("Too many HTTP redirects (exceeded limit).");
+    }
 
     public static void Register(
         EnvironmentScope scope,
@@ -192,50 +229,45 @@ public static class StandardLibrary
             {
                 if (args.Count == 0) throw new ArgumentException("fs.read_file expects a file path");
                 var path = args[0].AsString();
-                manifest.EnsureFsReadAllowed(path, scriptDirectory);
-                var fullPath = Path.IsPathRooted(path) ? path : Path.Combine(scriptDirectory, path);
-                return Ps2Value.From(File.ReadAllText(fullPath));
+                var resolvedPath = manifest.EnsureFsReadAllowed(path, scriptDirectory);
+                return Ps2Value.From(File.ReadAllText(resolvedPath));
             }),
             ["write_file"] = Ps2Value.CreateNativeFunction("fs.write_file", args =>
             {
                 if (args.Count < 2) throw new ArgumentException("fs.write_file expects (path, content)");
                 var path = args[0].AsString();
                 var content = args[1].AsString();
-                manifest.EnsureFsWriteAllowed(path, scriptDirectory);
-                var fullPath = Path.IsPathRooted(path) ? path : Path.Combine(scriptDirectory, path);
-                var dir = Path.GetDirectoryName(fullPath);
+                var resolvedPath = manifest.EnsureFsWriteAllowed(path, scriptDirectory);
+                var dir = Path.GetDirectoryName(resolvedPath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
                 }
-                File.WriteAllText(fullPath, content);
+                File.WriteAllText(resolvedPath, content);
                 return Ps2Value.True;
             }),
             ["exists"] = Ps2Value.CreateNativeFunction("fs.exists", args =>
             {
                 if (args.Count == 0) return Ps2Value.False;
                 var path = args[0].AsString();
-                manifest.EnsureFsReadAllowed(path, scriptDirectory);
-                var fullPath = Path.IsPathRooted(path) ? path : Path.Combine(scriptDirectory, path);
-                return Ps2Value.From(File.Exists(fullPath) || Directory.Exists(fullPath));
+                var resolvedPath = manifest.EnsureFsReadAllowed(path, scriptDirectory);
+                return Ps2Value.From(File.Exists(resolvedPath) || Directory.Exists(resolvedPath));
             }),
             ["list_dir"] = Ps2Value.CreateNativeFunction("fs.list_dir", args =>
             {
                 var path = args.Count > 0 ? args[0].AsString() : ".";
-                manifest.EnsureFsReadAllowed(path, scriptDirectory);
-                var fullPath = Path.IsPathRooted(path) ? path : Path.Combine(scriptDirectory, path);
-                var entries = Directory.GetFileSystemEntries(fullPath).Select(Path.GetFileName).Select(e => Ps2Value.From(e!)).ToList();
+                var resolvedPath = manifest.EnsureFsReadAllowed(path, scriptDirectory);
+                var entries = Directory.GetFileSystemEntries(resolvedPath).Select(Path.GetFileName).Select(e => Ps2Value.From(e!)).ToList();
                 return Ps2Value.From(entries);
             }),
             ["delete_file"] = Ps2Value.CreateNativeFunction("fs.delete_file", args =>
             {
                 if (args.Count == 0) return Ps2Value.False;
                 var path = args[0].AsString();
-                manifest.EnsureFsWriteAllowed(path, scriptDirectory);
-                var fullPath = Path.IsPathRooted(path) ? path : Path.Combine(scriptDirectory, path);
-                if (File.Exists(fullPath))
+                var resolvedPath = manifest.EnsureFsWriteAllowed(path, scriptDirectory);
+                if (File.Exists(resolvedPath))
                 {
-                    File.Delete(fullPath);
+                    File.Delete(resolvedPath);
                     return Ps2Value.True;
                 }
                 return Ps2Value.False;
@@ -250,8 +282,8 @@ public static class StandardLibrary
             {
                 if (args.Count == 0) throw new ArgumentException("net.http_get expects a URL");
                 var url = args[0].AsString();
-                manifest.EnsureNetHttpAllowed(url);
-                var resp = HttpClientInstance.GetStringAsync(url).GetAwaiter().GetResult();
+                using var response = SendHttpRequestWithValidatedRedirects(manifest, u => new HttpRequestMessage(HttpMethod.Get, u), url);
+                var resp = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 return Ps2Value.From(resp);
             }),
             ["http_post"] = Ps2Value.CreateNativeFunction("net.http_post", args =>
@@ -259,10 +291,13 @@ public static class StandardLibrary
                 if (args.Count < 2) throw new ArgumentException("net.http_post expects (url, body)");
                 var url = args[0].AsString();
                 var body = args[1].AsString();
-                manifest.EnsureNetHttpAllowed(url);
-                var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-                var resp = HttpClientInstance.PostAsync(url, content).GetAwaiter().GetResult();
-                var result = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                using var response = SendHttpRequestWithValidatedRedirects(manifest, u =>
+                {
+                    var req = new HttpRequestMessage(HttpMethod.Post, u);
+                    req.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                    return req;
+                }, url);
+                var result = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 return Ps2Value.From(result);
             })
         };
@@ -364,15 +399,21 @@ public static class StandardLibrary
                 var cmd = args[0].AsString();
                 manifest.EnsureProcExecAllowed(cmd);
 
-                string cmdArgs = args.Count > 1 ? string.Join(" ", args[1].AsList().Select(a => $"\"{a.AsString()}\"")) : string.Empty;
-
-                var psi = new ProcessStartInfo(cmd, cmdArgs)
+                var psi = new ProcessStartInfo(cmd)
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+
+                if (args.Count > 1)
+                {
+                    foreach (var argVal in args[1].AsList())
+                    {
+                        psi.ArgumentList.Add(argVal.AsString());
+                    }
+                }
 
                 using var proc = Process.Start(psi);
                 if (proc == null) throw new InvalidOperationException($"Failed to start process '{cmd}'.");

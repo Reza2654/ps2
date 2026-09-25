@@ -1,0 +1,63 @@
+{
+  "PS2 Capability Manifest": {
+    "prefix": "manifest",
+    "body": [
+      "#manifest",
+      "requires {",
+      "    fs.read: [\"${1:./data}\"],",
+      "    fs.write: [\"${2:./out}\"],",
+      "    net.http: [\"${3:api.example.com}\"],",
+      "    env: [\"${4:PATH}\"],",
+      "    proc.exec: [\"${5:git}\"]",
+      "}",
+      "#endmanifest",
+      "",
+      "$0"
+    ],
+    "description": "Zero-Trust Capability Manifest declaration"
+  },
+  "PS2 Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) {",
+      "    $0",
+      "}"
+    ],
+    "description": "Function definition"
+  },
+  "PS2 Pipeline": {
+    "prefix": "pipe",
+    "body": [
+      "${1:data}",
+      "    |> filter(${2:item} => ${3:condition})",
+      "    |> map(${2:item} => ${4:transform})"
+    ],
+    "description": "Functional pipeline using |> operator"
+  },
+  "PS2 Match Result": {
+    "prefix": "match",
+    "body": [
+      "match ${1:result} {",
+      "    Ok(${2:val}) => ${3:println(val)},",
+      "    Err(${4:err}) => ${5:println(err)},",
+      "    _ => ${6:println(\"other\")}",
+      "}"
+    ],
+    "description": "Pattern matching on Result or Option"
+  },
+  "PS2 File Read": {
+    "prefix": "fsread",
+    "body": [
+      "let ${1:content} = fs.read_file(\"${2:path/to/file.txt}\");"
+    ],
+    "description": "Read file using sandboxed fs module"
+  },
+  "PS2 HTTP Get": {
+    "prefix": "httpget",
+    "body": [
+      "let ${1:response} = net.http_get(\"${2:https://api.example.com/data}\");",
+      "let ${3:data} = json.parse(${1:response});"
+    ],
+    "description": "HTTP GET request with JSON parsing"
+  }
+}
